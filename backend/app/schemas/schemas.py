@@ -17,15 +17,18 @@ class LoginResponse(BaseModel):
 
 # ── Game ──
 class GameCreate(BaseModel):
-    name: str
+    name: str | None = None
     steam_app_id: str | None = None
     icon_url: str | None = None
+    discord_channel_ids: list[str] = []
 
 
 class GameUpdate(BaseModel):
     name: str | None = None
     steam_app_id: str | None = None
     icon_url: str | None = None
+    stopwords: list[str] | None = None
+    discord_channel_ids: list[str] | None = None
 
 
 class GameOut(BaseModel):
@@ -34,6 +37,8 @@ class GameOut(BaseModel):
     steam_app_id: str | None = None
     icon_url: str | None = None
     comment_count: int = 0
+    stopwords: list[str] = []
+    discord_channel_ids: list[str] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -54,8 +59,11 @@ class CommentOut(BaseModel):
     sentiment_score: float | None = None
     category: str | None = None
     summary: str | None = None
+    translation: str | None = None
     is_duplicate: bool = False
     game_name: str | None = None
+    # thumbs_up: Steam=0/1(不推荐/推荐), 小黑盒=1-5(星级), 其他来源=None
+    thumbs_up: int | None = None
 
     model_config = {"from_attributes": True}
 
@@ -84,15 +92,16 @@ class DashboardStats(BaseModel):
     total_comments: int
     today_new: int
     bug_count: int
-    negative_ratio: float
+    today_bug_count: int
+    suggestion_count: int
+    today_suggestion_count: int
+    negative_review_rate: float | None  # None = 无 steam_store 数据
 
 
 class TrendPoint(BaseModel):
     date: str
     count: int
-    positive: int
-    negative: int
-    neutral: int
+    health_score: float  # (positive + neutral*0.5) / count * 100, range 0-100
 
 
 class CategoryDist(BaseModel):
@@ -108,17 +117,21 @@ class SourceDist(BaseModel):
 class WordCloudItem(BaseModel):
     word: str
     weight: int
+    sentiment_score: float = 0.0  # -1 ~ +1: (正面-负面) / 总数
 
 
 # ── Alert ──
 class AlertRuleCreate(BaseModel):
     game_id: uuid.UUID
-    keywords: list[str]
+    rule_type: str = "keyword"       # keyword | threshold
+    keywords: list[str] = []
+    threshold_value: float | None = None
     channel: str = "in_app"
 
 
 class AlertRuleUpdate(BaseModel):
     keywords: list[str] | None = None
+    threshold_value: float | None = None
     channel: str | None = None
     enabled: bool | None = None
 
@@ -126,7 +139,9 @@ class AlertRuleUpdate(BaseModel):
 class AlertRuleOut(BaseModel):
     id: uuid.UUID
     game_id: uuid.UUID
+    rule_type: str
     keywords: list[str]
+    threshold_value: float | None = None
     channel: str
     enabled: bool
     last_triggered_at: datetime | None = None
@@ -135,23 +150,19 @@ class AlertRuleOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Report ──
-class ReportTaskCreate(BaseModel):
-    game_id: uuid.UUID
-    type: str
-    date_from: str | None = None
-    date_to: str | None = None
-    schedule: str | None = None
-
-
-class ReportTaskOut(BaseModel):
+class AlertEventOut(BaseModel):
     id: uuid.UUID
-    game_id: uuid.UUID
-    type: str
-    date_range: str | None = None
-    schedule: str | None = None
-    status: str
-    file_path: str | None = None
-    created_at: datetime
+    rule_id: uuid.UUID
+    comment_id: uuid.UUID | None = None
+    triggered_at: datetime
+    is_read: bool
+    # Denormalized for display
+    rule_type: str | None = None
+    keywords: list[str] | None = None
+    threshold_value: float | None = None
+    comment_content: str | None = None
+    game_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
+
+

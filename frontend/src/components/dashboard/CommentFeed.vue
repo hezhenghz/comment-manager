@@ -1,10 +1,10 @@
 <template>
   <div class="chart-card feed">
-    <h3>Latest Comments</h3>
+    <h3>最新评论</h3>
     <TransitionGroup name="feed" tag="div" class="feed-list">
       <div v-for="c in comments" :key="c.id" class="feed-item">
-        <span class="feed-platform-badge">{{ c.platform }}</span>
-        <span class="feed-sentiment-badge" :class="c.sentiment || 'neutral'">{{ c.sentiment || 'neutral' }}</span>
+        <span class="feed-platform-badge" :class="platformClass(c.platform)">{{ platformLabel(c.platform) }}</span>
+        <span class="feed-sentiment-badge" :class="c.sentiment || 'neutral'">{{ sentimentLabel(c.sentiment) }}</span>
         <span class="feed-text">{{ c.content.slice(0, 120) }}{{ c.content.length > 120 ? '...' : '' }}</span>
         <span class="feed-time">{{ formatTime(c.published_at) }}</span>
       </div>
@@ -15,6 +15,27 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue';
 import api from '../../api';
+
+const PLATFORM_MAP: Record<string, string> = {
+  steam_store: 'Steam评价',
+  steam_hub:   'Steam论坛',
+  discord:     'Discord',
+  qq:          'QQ群',
+  xiaoheihe:   '小黑盒',
+};
+const PLATFORM_CLASS: Record<string, string> = {
+  steam_store: 'platform-steam-store',
+  steam_hub:   'platform-steam-hub',
+  discord:     'platform-discord',
+  qq:          'platform-qq',
+  xiaoheihe:   'platform-xiaoheihe',
+};
+const SENTIMENT_MAP: Record<string, string> = {
+  positive: '正面', negative: '负面', neutral: '中性',
+};
+function platformLabel(p: string) { return PLATFORM_MAP[p] ?? p; }
+function platformClass(p: string) { return PLATFORM_CLASS[p] ?? 'platform-other'; }
+function sentimentLabel(s: string | null) { return SENTIMENT_MAP[s ?? ''] ?? '中性'; }
 
 const props = defineProps<{ gameId: string | null }>();
 
@@ -75,24 +96,29 @@ h3 {
 }
 
 .feed-platform-badge {
-  background: var(--accent);
-  color: #fff;
+  display: inline-block;
   padding: 1px 6px;
   border-radius: 4px;
   font-size: 10px;
   white-space: nowrap;
   flex-shrink: 0;
+  font-weight: 500;
 }
+.platform-steam-store { background: rgba(30, 111, 214, 0.18); color: #4a9eff; }
+.platform-steam-hub   { background: rgba(59, 165, 93, 0.18);  color: #4caf74; }
+.platform-discord     { background: rgba(114, 137, 218, 0.2); color: #7289da; }
+.platform-qq          { background: rgba(18, 183, 245, 0.18); color: #12b7f5; }
+.platform-xiaoheihe   { background: rgba(255, 120, 30, 0.18); color: #ff781e; }
+.platform-other       { background: rgba(107, 114, 128, 0.18); color: var(--text-secondary); }
 
 .feed-sentiment-badge {
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 10px;
+  font-size: 12px;
+  font-weight: 600;
   flex-shrink: 0;
 }
-.feed-sentiment-badge.positive { background: rgba(34,197,94,0.2); color: var(--positive); }
-.feed-sentiment-badge.negative { background: rgba(239,68,68,0.2); color: var(--negative); }
-.feed-sentiment-badge.neutral { background: rgba(107,114,128,0.2); color: var(--neutral); }
+.feed-sentiment-badge.positive { color: var(--positive); }
+.feed-sentiment-badge.negative { color: var(--negative); }
+.feed-sentiment-badge.neutral  { color: var(--neutral); }
 
 .feed-text {
   flex: 1;

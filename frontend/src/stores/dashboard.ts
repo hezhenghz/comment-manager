@@ -5,40 +5,32 @@ export interface DashboardStats {
   total_comments: number;
   today_new: number;
   bug_count: number;
-  negative_ratio: number;
+  today_bug_count: number;
+  suggestion_count: number;
+  today_suggestion_count: number;
+  negative_review_rate: number | null;
 }
 
 export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
-    stats: {} as DashboardStats,
-    trends: [] as any[],
+    stats: { total_comments: 0, today_new: 0, bug_count: 0, today_bug_count: 0, suggestion_count: 0, today_suggestion_count: 0, negative_review_rate: null } as DashboardStats,
     categories: [] as any[],
     sources: [] as any[],
-    wordcloud: [] as any[],
-    games: [] as any[],
-    selectedGameId: null as string | null,
   }),
   actions: {
-    async loadGames() {
-      const { data } = await api.get('/games');
-      this.games = data;
-    },
     async loadAll(gameId?: string | null) {
-      const gid = gameId ?? this.selectedGameId;
       const params: any = {};
-      if (gid) params.game_id = gid;
-      const [stats, trends, categories, sources, wordcloud] = await Promise.all([
+      if (gameId) params.game_id = gameId;
+
+      const [stats, categories, sources] = await Promise.allSettled([
         api.get('/dashboard/stats', { params }),
-        api.get('/dashboard/trends', { params }),
         api.get('/dashboard/categories', { params }),
         api.get('/dashboard/sources', { params }),
-        api.get('/dashboard/wordcloud', { params }),
       ]);
-      this.stats = stats.data;
-      this.trends = trends.data;
-      this.categories = categories.data;
-      this.sources = sources.data;
-      this.wordcloud = wordcloud.data;
+
+      if (stats.status      === 'fulfilled') this.stats      = stats.value.data;
+      if (categories.status === 'fulfilled') this.categories = categories.value.data;
+      if (sources.status    === 'fulfilled') this.sources    = sources.value.data;
     },
   },
 });

@@ -20,6 +20,19 @@ async def add_user(username: str, password: str, display_name: str):
         print(f"User '{username}' created.")
 
 
+async def set_admin(username: str):
+    from app.models import User
+    async with session_factory() as db:
+        result = await db.execute(select(User).where(User.username == username))
+        user = result.scalar_one_or_none()
+        if not user:
+            print(f"User '{username}' not found.")
+            return
+        user.is_admin = True
+        await db.commit()
+        print(f"User '{username}' is now admin.")
+
+
 async def list_users():
     from app.models import User
     async with session_factory() as db:
@@ -46,6 +59,7 @@ def main():
         print("Usage: python manage.py <command> [args...]")
         print("Commands:")
         print("  adduser <username> <password> <display_name>")
+        print("  setadmin <username>")
         print("  listusers")
         print("  initdb")
         print("  enable_vector")
@@ -54,6 +68,8 @@ def main():
     cmd = sys.argv[1]
     if cmd == "adduser":
         asyncio.run(add_user(sys.argv[2], sys.argv[3], sys.argv[4]))
+    elif cmd == "setadmin":
+        asyncio.run(set_admin(sys.argv[2]))
     elif cmd == "listusers":
         asyncio.run(list_users())
     elif cmd == "initdb":

@@ -2,16 +2,16 @@
   <div class="login-page">
     <form @submit.prevent="handleLogin" class="login-card">
       <h1>Comment Manager</h1>
-      <p class="subtitle">Player Feedback Aggregator</p>
+      <p class="subtitle">玩家评论聚合平台</p>
       <div class="field">
-        <label>Username</label>
-        <input v-model="username" type="text" placeholder="Enter username" />
+        <label>用户名</label>
+        <input v-model="username" type="text" placeholder="请输入用户名" />
       </div>
       <div class="field">
-        <label>Password</label>
-        <input v-model="password" type="password" placeholder="Enter password" />
+        <label>密码</label>
+        <input v-model="password" type="password" placeholder="请输入密码" />
       </div>
-      <button type="submit" :disabled="loading">{{ loading ? 'Signing in...' : 'Sign In' }}</button>
+      <button type="submit" :disabled="loading">{{ loading ? '登录中...' : '登录' }}</button>
       <p v-if="error" class="error">{{ error }}</p>
     </form>
   </div>
@@ -36,7 +36,7 @@ async function handleLogin() {
     await auth.login(username.value, password.value);
     router.push('/dashboard');
   } catch (err: any) {
-    error.value = err.response?.data?.detail || 'Login failed';
+    error.value = err.response?.data?.detail || '登录失败，请检查用户名和密码';
   } finally {
     loading.value = false;
   }

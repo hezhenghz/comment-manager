@@ -6,10 +6,16 @@ from app.config import get_settings
 class DeepSeekProvider(BaseProvider):
     name = "deepseek"
 
-    def __init__(self):
+    def __init__(self, api_key: str | None = None, base_url: str | None = None, model: str | None = None,
+                 timeout: float = 8.0):
         s = get_settings()
-        self.client = AsyncOpenAI(api_key=s.ai_chat_api_key, base_url=s.ai_chat_base_url)
-        self.model = s.ai_chat_model
+        self.client = AsyncOpenAI(
+            api_key=api_key or s.ai_chat_api_key,
+            base_url=base_url or s.ai_chat_base_url,
+            max_retries=0,
+            timeout=timeout,
+        )
+        self.model = model or s.ai_chat_model
 
     async def chat(self, system: str, user: str, temperature: float = 0.3, max_tokens: int = 1024) -> str:
         resp = await self.client.chat.completions.create(

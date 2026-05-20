@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { useAuthStore } from '../stores/auth';
 
 const routes = [
   { path: '/login', component: () => import('../components/Login.vue'), meta: { public: true } },
@@ -9,10 +10,9 @@ const routes = [
       { path: '', redirect: '/dashboard' },
       { path: 'dashboard', component: () => import('../components/dashboard/Dashboard.vue') },
       { path: 'comments', component: () => import('../components/comments/CommentTable.vue') },
-      { path: 'reports', component: () => import('../components/reports/ReportList.vue') },
-      { path: 'alerts', component: () => import('../components/alerts/AlertRuleList.vue') },
-      { path: 'games', component: () => import('../components/games/GameList.vue') },
-      { path: 'settings', component: () => import('../components/settings/Settings.vue') },
+      { path: 'bugs', component: () => import('../components/comments/CommentTable.vue'), props: { fixedCategory: 'bug' } },
+      { path: 'suggestions', component: () => import('../components/comments/CommentTable.vue'), props: { fixedCategory: 'suggestion' } },
+      { path: 'games', component: () => import('../components/games/GameList.vue'), meta: { adminOnly: true } },
     ],
   },
 ];
@@ -22,15 +22,22 @@ const router = createRouter({
   routes,
 });
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const token = localStorage.getItem('token');
   if (!to.meta.public && !token) {
     next('/login');
-  } else if (to.path === '/login' && token) {
-    next('/dashboard');
-  } else {
-    next();
+    return;
   }
+  if (to.path === '/login' && token) {
+    next('/dashboard');
+    return;
+  }
+  if (to.meta.adminOnly) {
+    const auth = useAuthStore();
+    if (!auth.user) await auth.fetchMe();
+    if (!auth.user?.is_admin) { next('/dashboard'); return; }
+  }
+  next();
 });
 
 export default router;

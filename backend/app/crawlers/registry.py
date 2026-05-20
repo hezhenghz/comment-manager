@@ -1,13 +1,14 @@
 from app.crawlers.base import BaseCrawler
 from app.crawlers.steam.store import SteamStoreCrawler
 from app.crawlers.steam.hub import SteamHubCrawler
+from app.crawlers.xiaoheihe import XiaoheiheCrawler
+from app.crawlers.discord import DiscordCrawler
 
 _registry: dict[str, type[BaseCrawler]] = {
     "steam_store": SteamStoreCrawler,
     "steam_hub": SteamHubCrawler,
-    # "discord": DiscordCrawler,   # reserved
-    # "qq": QQCrawler,             # reserved
-    # "xiaoheihe": XiaoheiheCrawler, # reserved
+    "xiaoheihe": XiaoheiheCrawler,
+    "discord": DiscordCrawler,
 }
 
 

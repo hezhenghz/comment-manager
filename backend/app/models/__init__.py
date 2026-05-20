@@ -14,11 +14,13 @@ class Game(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     steam_app_id: Mapped[str | None] = mapped_column(String(50))
     icon_url: Mapped[str | None] = mapped_column(String(1024))
+    stopwords: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    discord_channel_ids: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     comments: Mapped[list["Comment"]] = relationship(back_populates="game", cascade="all, delete-orphan")
     alert_rules: Mapped[list["AlertRule"]] = relationship(back_populates="game", cascade="all, delete-orphan")
-    report_tasks: Mapped[list["ReportTask"]] = relationship(back_populates="game", cascade="all, delete-orphan")
+    crawl_jobs: Mapped[list["CrawlJob"]] = relationship(back_populates="game", cascade="all, delete-orphan")
 
 
 class Comment(Base):
@@ -29,6 +31,7 @@ class Comment(Base):
     platform: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     source_type: Mapped[str] = mapped_column(String(50), nullable=False)
     source_url: Mapped[str | None] = mapped_column(String(2048))
+    external_id: Mapped[str | None] = mapped_column(String(100), index=True)
     author_name: Mapped[str | None] = mapped_column(String(255))
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_lang: Mapped[str | None] = mapped_column(String(10))
@@ -39,6 +42,7 @@ class Comment(Base):
     sentiment_score: Mapped[float | None] = mapped_column(Float)
     category: Mapped[str | None] = mapped_column(String(50), index=True)
     summary: Mapped[str | None] = mapped_column(Text)
+    translation: Mapped[str | None] = mapped_column(Text)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024))
     is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False)
     duplicate_of: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("comments.id"), nullable=True)
@@ -58,6 +62,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(255))
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -66,25 +71,43 @@ class AlertRule(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     game_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("games.id"), nullable=False)
-    keywords: Mapped[list[str]] = mapped_column(ARRAY(String))
+    rule_type: Mapped[str] = mapped_column(String(20), default="keyword")  # keyword | threshold
+    keywords: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    threshold_value: Mapped[float | None] = mapped_column(Float)  # 负面率阈值 %
     channel: Mapped[str] = mapped_column(String(50), default="in_app")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_triggered_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     game: Mapped["Game"] = relationship(back_populates="alert_rules")
+    events: Mapped[list["AlertEvent"]] = relationship(back_populates="rule", cascade="all, delete-orphan")
 
 
-class ReportTask(Base):
-    __tablename__ = "report_tasks"
+class AlertEvent(Base):
+    __tablename__ = "alert_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    rule_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("alert_rules.id"), nullable=False)
+    comment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("comments.id"), nullable=True)
+    triggered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    rule: Mapped["AlertRule"] = relationship(back_populates="events")
+
+
+class CrawlJob(Base):
+    __tablename__ = "crawl_jobs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     game_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("games.id"), nullable=False)
-    type: Mapped[str] = mapped_column(String(20), nullable=False)
-    date_range: Mapped[str | None] = mapped_column(String(100))
-    schedule: Mapped[str | None] = mapped_column(String(50))
-    status: Mapped[str] = mapped_column(String(20), default="pending")
-    file_path: Mapped[str | None] = mapped_column(String(1024))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    game: Mapped["Game"] = relationship(back_populates="report_tasks")
+    platform: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="running")  # running | done | failed
+    game: Mapped["Game"] = relationship(back_populates="crawl_jobs")
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+    new_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_msg: Mapped[str | None] = mapped_column(Text)
+    # 两阶段进度
+    phase:    Mapped[str | None] = mapped_column(String(20))        # "crawl" | "ai" | None
+    ai_total: Mapped[int]        = mapped_column(Integer, default=0) # Phase2 需处理总数
+    ai_done:  Mapped[int]        = mapped_column(Integer, default=0) # Phase2 已完成数

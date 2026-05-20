@@ -1,7 +1,14 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 @asynccontextmanager
@@ -19,8 +26,8 @@ app = FastAPI(title="Comment Manager", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,  # Bearer token via Authorization header，无需 Cookie
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -31,10 +38,6 @@ from app.api.games import router as games_router
 from app.api.comments import router as comments_router
 from app.api.search import router as search_router
 from app.api.dashboard import router as dashboard_router
-from app.api.alerts import router as alerts_router
-from app.api.reports import router as reports_router
-from app.api.export import router as export_router
-from app.api.settings import router as settings_router
 from app.api.crawlers import router as crawlers_router
 
 app.include_router(auth_router)
@@ -42,10 +45,6 @@ app.include_router(games_router)
 app.include_router(comments_router)
 app.include_router(search_router)
 app.include_router(dashboard_router)
-app.include_router(alerts_router)
-app.include_router(reports_router)
-app.include_router(export_router)
-app.include_router(settings_router)
 app.include_router(crawlers_router)
 
 

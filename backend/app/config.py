@@ -1,5 +1,9 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+# .env 固定在项目根目录（config.py → app/ → backend/ → 项目根）
+_ENV_FILE = Path(__file__).parent.parent.parent / ".env"
 
 
 class Settings(BaseSettings):
@@ -17,6 +21,11 @@ class Settings(BaseSettings):
     ai_chat_base_url: str = "https://api.deepseek.com"
     ai_chat_model: str = "deepseek-v4-flash"
 
+    # AI - Chat 备用（OpenAI 兼容格式，Key 留空则不启用）
+    ai_chat_backup_api_key: str = ""
+    ai_chat_backup_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    ai_chat_backup_model: str = "qwen-turbo"
+
     # AI - Embedding (Qwen / DashScope)
     ai_embedding_api_key: str = ""
     ai_embedding_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -28,7 +37,16 @@ class Settings(BaseSettings):
     # Crawler
     crawler_interval_minutes: int = 120
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # Proxy（用于访问 Steam 等被墙的接口，留空则不使用）
+    steam_proxy: str = ""
+
+    # 小黑盒（暂停，详见 docs/xiaoheihe-crawl-research.md）
+    xiaoheihe_cookie: str = ""
+
+    # Discord
+    discord_bot_token: str = ""
+
+    model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8"}
 
 
 @lru_cache()

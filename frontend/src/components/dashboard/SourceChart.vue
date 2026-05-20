@@ -1,13 +1,18 @@
 <template>
   <div class="chart-card">
-    <h3>Sources</h3>
-    <v-chart :option="option" autoresize />
+    <h3>来源分布</h3>
+    <v-chart :option="option" autoresize style="height: 260px" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import VChart from 'vue-echarts';
+
+const PLATFORM_LABEL: Record<string, string> = {
+  steam_store: 'Steam评价', steam_hub: 'Steam论坛',
+  discord: 'Discord', qq: 'QQ群', xiaoheihe: '小黑盒',
+};
 
 const props = defineProps<{ data: any[] }>();
 
@@ -18,7 +23,7 @@ const option = computed(() => ({
     radius: '65%',
     itemStyle: { borderRadius: 4 },
     label: { color: '#9ca3af' },
-    data: props.data.map((d: any) => ({ name: d.platform, value: d.count })),
+    data: props.data.map((d: any) => ({ name: PLATFORM_LABEL[d.platform] ?? d.platform, value: d.count })),
   }],
 }));
 </script>

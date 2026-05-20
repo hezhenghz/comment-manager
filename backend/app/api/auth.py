@@ -22,4 +22,4 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 @router.get("/me")
 async def me(current_user: User = Depends(get_current_user)):
-    return {"id": str(current_user.id), "username": current_user.username, "display_name": current_user.display_name}
+    return {"id": str(current_user.id), "username": current_user.username, "display_name": current_user.display_name, "is_admin": current_user.is_admin}
