@@ -30,3 +30,9 @@ pgdata/
 
 # 导出文件
 exports/
+
+# 爬虫浏览器 Profile（含登录态，本地保留，不提交）
+backend/.browser_profiles/
+
+# 运行日志
+backend.log
