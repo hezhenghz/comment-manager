@@ -1,6 +1,13 @@
 <template>
   <div class="page">
     <h2>游戏管理</h2>
+    <div class="schedule-bar">
+      <span class="schedule-dot" :class="scheduleEnabled ? 'active' : 'inactive'"></span>
+      <span v-if="scheduleEnabled">
+        定时自动爬取已启用 · 间隔 {{ scheduleInterval }} 分钟 · 下次执行：{{ scheduleNextRun }}
+      </span>
+      <span v-else style="color: var(--text-muted)">定时自动爬取未启用</span>
+    </div>
     <GameForm @created="load" />
 
     <div v-if="!games.length" class="empty">还没有添加游戏</div>
@@ -54,14 +61,14 @@
                     <div class="pipe-progress">
                       <span class="pipe-time">已用 {{ formatDuration(getElapsedSec(activeJob.started_at)) }}</span>
                       <span class="pipe-sep">/</span>
-                      <span class="pipe-time">预计 {{ formatDuration(getEstimateSec(item.platform)) }}</span>
-                      <span class="pipe-remain">{{ getRemainingText(activeJob.started_at, item.platform) }}</span>
+                      <span class="pipe-time">预计 {{ formatDuration(getEstimateSec(g.id, item.platform)) }}</span>
+                      <span class="pipe-remain">{{ getRemainingText(activeJob.started_at, g.id, item.platform) }}</span>
                     </div>
                     <div class="pipe-bar">
                       <div
                         class="pipe-bar-fill"
-                        :class="{ overrun: getProgressPct(activeJob.started_at, item.platform) >= 100 }"
-                        :style="{ width: getProgressPct(activeJob.started_at, item.platform) + '%' }"
+                        :class="{ overrun: getProgressPct(activeJob.started_at, g.id, item.platform) >= 100 }"
+                        :style="{ width: getProgressPct(activeJob.started_at, g.id, item.platform) + '%' }"
                       />
                     </div>
                   </template>
@@ -120,13 +127,13 @@
                 <button
                   class="btn-trial"
                   :disabled="isBusy(g.id, item.platform) || !isConfigured(g, item.platform)"
-                  :title="!isConfigured(g, item.platform) ? '请先在下方配置频道 ID 并保存' : '只抓5条，快速验证爬虫机制是否正常'"
+                  :title="!isConfigured(g, item.platform) ? (item.platform === 'qq' ? '请先在下方配置 QQ 群号并保存' : '请先在下方配置频道 ID 并保存') : '只抓5条，快速验证爬虫机制是否正常'"
                   @click="triggerTrial(g, item.platform)"
                 >试爬</button>
                 <button
                   class="btn-crawl"
                   :disabled="isBusy(g.id, item.platform) || !isConfigured(g, item.platform)"
-                  :title="!isConfigured(g, item.platform) ? '请先在下方配置频道 ID 并保存' : ''"
+                  :title="!isConfigured(g, item.platform) ? (item.platform === 'qq' ? '请先在下方配置 QQ 群号并保存' : '请先在下方配置频道 ID 并保存') : ''"
                   @click="triggerCrawl(g, item.platform)"
                 >{{ getCrawlBtnText(g.id, item.platform) }}</button>
               </div>
@@ -156,7 +163,29 @@
             </span>
           </div>
           <div v-else class="discord-hint">尚未配置频道 ID</div>
-          <div class="discord-hint">获取方式：Discord 开启开发者模式 → 右键频道 → 复制频道 ID</div>
+        </div>
+
+        <!-- QQ 群号配置 -->
+        <div class="detail-section">
+          <div class="detail-title">
+            QQ 群号
+            <span v-if="qqSaveStatus[g.id]" class="sw-save-hint" :class="qqSaveStatus[g.id]">
+              {{ qqSaveStatus[g.id] === 'saving' ? '保存中…' : qqSaveStatus[g.id] === 'error' ? '保存失败' : '已保存 ✓' }}
+            </span>
+          </div>
+          <input
+            class="sw-input"
+            placeholder="输入 QQ 群号后回车添加"
+            v-model="qqInput[g.id]"
+            @keydown.enter.prevent="addQQGroup(g.id, $event)"
+          />
+          <div v-if="qqDupWarning[g.id]" class="sw-dup-hint">群号格式无效或已存在（应为 5-12 位纯数字）</div>
+          <div v-if="editingQQIds[g.id]?.length" class="sw-tags-list">
+            <span v-for="(gid, i) in editingQQIds[g.id]" :key="i" class="sw-tag qq-tag">
+              {{ gid }}<button class="sw-del" @click="removeQQGroup(g.id, i)">×</button>
+            </span>
+          </div>
+          <div v-else class="discord-hint">尚未配置 QQ 群号</div>
         </div>
 
       </div>
@@ -222,6 +251,7 @@ interface GameRow {
   icon_url: string | null;
   comment_count: number;
   discord_channel_ids: string[];
+  qq_group_ids: string[];
   created_at: string;
 }
 
@@ -239,10 +269,34 @@ interface JobData {
 
 const games = ref<GameRow[]>([]);
 const crawlJobs = ref<Record<string, any[]>>({});
+
+const scheduleEnabled = ref(false);
+const scheduleInterval = ref(120);
+const scheduleNextRun = ref('—');
+let scheduleTimer: number | null = null;
+
+async function loadSchedule() {
+  try {
+    const { data } = await api.get('/crawlers/schedule');
+    scheduleEnabled.value = data.enabled;
+    scheduleInterval.value = data.interval_minutes;
+    if (data.next_run_time) {
+      const d = new Date(data.next_run_time);
+      scheduleNextRun.value = d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    } else {
+      scheduleNextRun.value = '—';
+    }
+  } catch {}
+}
 const editingDiscordIds = ref<Record<string, string[]>>({});
 const discordInput = ref<Record<string, string>>({});
 const discordSaveStatus = ref<Record<string, string | null>>({});
 const discordDupWarning = ref<Record<string, boolean>>({});
+
+const editingQQIds = ref<Record<string, string[]>>({});
+const qqInput = ref<Record<string, string>>({});
+const qqSaveStatus = ref<Record<string, string | null>>({});
+const qqDupWarning = ref<Record<string, boolean>>({});
 const deleteTarget = ref<GameRow | null>(null);
 const clearTarget = ref<{ gameId: string; gameName: string; platform: string; count: number } | null>(null);
 const clearing = ref(false);
@@ -253,6 +307,7 @@ const postError = ref<Record<string, string>>({});
 const trackedJobId = ref<Record<string, string>>({});
 const trackedJobData = ref<Record<string, JobData>>({});
 const trackedTimers = ref<Record<string, number>>({});
+const crawlDurationSec = ref<Record<string, number>>({});
 
 let pollTimer: number | null = null;
 let tickTimer: number | null = null;
@@ -268,24 +323,30 @@ function getElapsedSec(startedAt: string): number {
   const start = new Date(startedAt.endsWith('Z') ? startedAt : startedAt + 'Z');
   return Math.max(0, Math.floor((now.value - start.getTime()) / 1000));
 }
-function getEstimateSec(platform: string): number {
-  return ESTIMATED_SECONDS[platform] ?? 120;
+function _storeDuration(gameId: string, platform: string, startedAt: string | null, finishedAt: string | null) {
+  if (!startedAt || !finishedAt) return;
+  const sec = Math.round((new Date(finishedAt).getTime() - new Date(startedAt).getTime()) / 1000);
+  if (sec > 0) crawlDurationSec.value[`${gameId}_${platform}`] = sec;
 }
-function getProgressPct(startedAt: string, platform: string): number {
-  return Math.min(100, Math.round(getElapsedSec(startedAt) / getEstimateSec(platform) * 100));
+function getEstimateSec(gameId: string, platform: string): number {
+  return crawlDurationSec.value[`${gameId}_${platform}`] ?? ESTIMATED_SECONDS[platform] ?? 120;
+}
+function getProgressPct(startedAt: string, gameId: string, platform: string): number {
+  return Math.min(100, Math.round(getElapsedSec(startedAt) / getEstimateSec(gameId, platform) * 100));
 }
 function formatDuration(sec: number): string {
   const m = Math.floor(Math.abs(sec) / 60);
   const s = Math.abs(sec) % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
-function getRemainingText(startedAt: string, platform: string): string {
-  const remaining = getEstimateSec(platform) - getElapsedSec(startedAt);
+function getRemainingText(startedAt: string, gameId: string, platform: string): string {
+  const remaining = getEstimateSec(gameId, platform) - getElapsedSec(startedAt);
   if (remaining <= 0) return '即将完成…';
   return `剩余约 ${formatDuration(remaining)}`;
 }
 function formatTime(t: string) {
-  return new Date(t).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const iso = t.endsWith('Z') || t.includes('+') ? t : t + 'Z';
+  return new Date(iso).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 function getActiveJob(gameId: string, platform: string): JobData | null {
@@ -315,6 +376,7 @@ function getPostError(gameId: string, platform: string): string | null {
 
 function isConfigured(g: GameRow, platform: string): boolean {
   if (platform === 'discord') return (g.discord_channel_ids ?? []).length > 0;
+  if (platform === 'qq') return (g.qq_group_ids ?? []).length > 0;
   return !!g.steam_app_id;
 }
 
@@ -392,6 +454,14 @@ async function fetchTrackedJob(key: string, jobId: string, gameId: string) {
         clearInterval(trackedTimers.value[key]);
         delete trackedTimers.value[key];
       }
+      if (data.status === 'done') {
+        const platform = key.substring(gameId.length + 1);
+        _storeDuration(gameId, platform, data.started_at, data.finished_at);
+      }
+      await loadJobs(gameId);
+      const next = { ...trackedJobData.value };
+      delete next[key];
+      trackedJobData.value = next;
       await load();
     }
   } catch {}
@@ -400,10 +470,13 @@ async function fetchTrackedJob(key: string, jobId: string, gameId: string) {
 async function load() {
   const { data } = await api.get('/games');
   games.value = data;
-  // 初始化 discord 编辑态（只对尚未初始化的游戏）
+  // 初始化 discord / qq 编辑态（只对尚未初始化的游戏）
   for (const g of data) {
     if (!editingDiscordIds.value[g.id]) {
       editingDiscordIds.value[g.id] = [...(g.discord_channel_ids ?? [])];
+    }
+    if (!editingQQIds.value[g.id]) {
+      editingQQIds.value[g.id] = [...(g.qq_group_ids ?? [])];
     }
   }
 }
@@ -418,6 +491,11 @@ async function loadJobs(gameId: string) {
   try {
     const { data } = await api.get('/crawlers/jobs', { params: { game_id: gameId } });
     crawlJobs.value = { ...crawlJobs.value, [gameId]: data };
+    for (const item of data) {
+      if (item.job?.status === 'done') {
+        _storeDuration(gameId, item.platform, item.job.started_at, item.job.finished_at);
+      }
+    }
   } catch {
     crawlJobs.value = { ...crawlJobs.value, [gameId]: [] };
   }
@@ -491,6 +569,52 @@ async function removeDiscordChannel(gameId: string, idx: number) {
   await _persistDiscordChannels(gameId);
 }
 
+// ── QQ Groups ─────────────────────────────────────────────────────────────
+function _addQQId(gameId: string, raw: string) {
+  const id = raw.trim();
+  if (!id) return false;
+  if (!/^\d{5,12}$/.test(id)) {
+    qqDupWarning.value = { ...qqDupWarning.value, [gameId]: true };
+    setTimeout(() => { qqDupWarning.value = { ...qqDupWarning.value, [gameId]: false }; }, 3000);
+    return false;
+  }
+  const list = editingQQIds.value[gameId] ?? [];
+  if (list.includes(id)) {
+    qqDupWarning.value = { ...qqDupWarning.value, [gameId]: true };
+    setTimeout(() => { qqDupWarning.value = { ...qqDupWarning.value, [gameId]: false }; }, 2000);
+    return false;
+  }
+  editingQQIds.value = { ...editingQQIds.value, [gameId]: [...list, id] };
+  return true;
+}
+async function _persistQQGroups(gameId: string) {
+  const game = games.value.find(g => g.id === gameId);
+  if (!game) return;
+  qqSaveStatus.value = { ...qqSaveStatus.value, [gameId]: 'saving' };
+  try {
+    const ids = editingQQIds.value[gameId] ?? [];
+    await api.put(`/games/${gameId}`, { qq_group_ids: ids });
+    game.qq_group_ids = [...ids];
+    qqSaveStatus.value = { ...qqSaveStatus.value, [gameId]: 'saved' };
+    setTimeout(() => { qqSaveStatus.value = { ...qqSaveStatus.value, [gameId]: null }; }, 2000);
+  } catch {
+    qqSaveStatus.value = { ...qqSaveStatus.value, [gameId]: 'error' };
+    setTimeout(() => { qqSaveStatus.value = { ...qqSaveStatus.value, [gameId]: null }; }, 3000);
+  }
+}
+async function addQQGroup(gameId: string, _e: Event) {
+  if (_addQQId(gameId, qqInput.value[gameId] ?? '')) {
+    qqInput.value = { ...qqInput.value, [gameId]: '' };
+    await _persistQQGroups(gameId);
+  }
+}
+async function removeQQGroup(gameId: string, idx: number) {
+  const list = [...(editingQQIds.value[gameId] ?? [])];
+  list.splice(idx, 1);
+  editingQQIds.value = { ...editingQQIds.value, [gameId]: list };
+  await _persistQQGroups(gameId);
+}
+
 // ── Delete game ────────────────────────────────────────────────────────────
 function askDelete(g: GameRow) { deleteTarget.value = g; }
 async function confirmDelete() {
@@ -503,20 +627,40 @@ async function confirmDelete() {
 onMounted(async () => {
   await load();
   await loadAllJobs();
+  await loadSchedule();
   pollTimer = window.setInterval(loadAllJobs, 3000);
   tickTimer = window.setInterval(() => { now.value = Date.now(); }, 1000);
+  scheduleTimer = window.setInterval(loadSchedule, 60000);
 });
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);
   if (tickTimer) clearInterval(tickTimer);
+  if (scheduleTimer) clearInterval(scheduleTimer);
   Object.values(trackedTimers.value).forEach(clearInterval);
 });
 </script>
 
 <style scoped>
 .page { max-width: 900px; }
-h2 { font-size: 22px; margin-bottom: 20px; }
+h2 { font-size: 22px; margin-bottom: 12px; }
+
+.schedule-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+}
+.schedule-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.schedule-dot.active   { background: var(--success); }
+.schedule-dot.inactive { background: var(--text-muted); }
 
 .empty {
   text-align: center;
@@ -711,9 +855,10 @@ h2 { font-size: 22px; margin-bottom: 20px; }
 .btn-crawl:disabled { opacity: 0.5; cursor: not-allowed; }
 .loading-text { font-size: 13px; color: var(--text-muted); }
 
-/* ── Discord channels ── */
+/* ── Discord channels / QQ groups ── */
 .discord-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
 .discord-tag { font-family: monospace; }
+.qq-tag { font-family: monospace; }
 
 /* ── Shared input/tag styles ── */
 .sw-input {

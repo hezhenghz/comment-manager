@@ -17,13 +17,18 @@ const props = defineProps<{ data: any[] }>();
 
 const option = computed(() => ({
   tooltip: { trigger: 'item' },
-  legend: { orient: 'vertical', right: '5%', top: 'center', textStyle: { color: '#9ca3af' } },
+  legend: { show: false },
   series: [{
     type: 'pie',
-    radius: ['40%', '70%'],
-    center: ['40%', '50%'],
+    radius: ['40%', '65%'],
+    center: ['50%', '50%'],
     itemStyle: { borderRadius: 4 },
-    label: { show: false },
+    label: {
+      show: true,
+      color: '#9ca3af',
+      formatter: ({ name, percent }: any) => `${name}\n${percent}%`,
+    },
+    labelLine: { show: true, lineStyle: { color: '#4b5563' } },
     data: props.data.map((d: any) => ({ name: CATEGORY_LABEL[d.category] ?? d.category, value: d.count })),
   }],
 }));

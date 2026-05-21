@@ -89,6 +89,7 @@ async def list_games(db: AsyncSession = Depends(get_db), _: User = Depends(get_c
             icon_url=g.icon_url, comment_count=comment_count,
             stopwords=g.stopwords or [],
             discord_channel_ids=g.discord_channel_ids or [],
+            qq_group_ids=g.qq_group_ids or [],
             created_at=g.created_at,
         ))
     return out
@@ -121,6 +122,7 @@ async def create_game(body: GameCreate, db: AsyncSession = Depends(get_db), _: U
         steam_app_id=body.steam_app_id,
         icon_url=body.icon_url,
         discord_channel_ids=body.discord_channel_ids or [],
+        qq_group_ids=body.qq_group_ids or [],
     )
     db.add(game)
     await db.flush()
@@ -129,6 +131,7 @@ async def create_game(body: GameCreate, db: AsyncSession = Depends(get_db), _: U
         id=game.id, name=game.name, steam_app_id=game.steam_app_id,
         icon_url=game.icon_url, comment_count=0,
         discord_channel_ids=game.discord_channel_ids or [],
+        qq_group_ids=game.qq_group_ids or [],
         created_at=game.created_at,
     )
 
@@ -149,6 +152,8 @@ async def update_game(game_id: uuid.UUID, body: GameUpdate, db: AsyncSession = D
         game.stopwords = body.stopwords
     if body.discord_channel_ids is not None:
         game.discord_channel_ids = body.discord_channel_ids
+    if body.qq_group_ids is not None:
+        game.qq_group_ids = body.qq_group_ids
     await db.flush()
     await db.refresh(game)
     cnt_result = await db.execute(select(func.count()).select_from(Comment).where(Comment.game_id == game.id))
@@ -158,6 +163,7 @@ async def update_game(game_id: uuid.UUID, body: GameUpdate, db: AsyncSession = D
         icon_url=game.icon_url, comment_count=comment_count,
         stopwords=game.stopwords or [],
         discord_channel_ids=game.discord_channel_ids or [],
+        qq_group_ids=game.qq_group_ids or [],
         created_at=game.created_at,
     )
 

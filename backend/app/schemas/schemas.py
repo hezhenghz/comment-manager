@@ -21,6 +21,7 @@ class GameCreate(BaseModel):
     steam_app_id: str | None = None
     icon_url: str | None = None
     discord_channel_ids: list[str] = []
+    qq_group_ids: list[str] = []
 
 
 class GameUpdate(BaseModel):
@@ -29,6 +30,7 @@ class GameUpdate(BaseModel):
     icon_url: str | None = None
     stopwords: list[str] | None = None
     discord_channel_ids: list[str] | None = None
+    qq_group_ids: list[str] | None = None
 
 
 class GameOut(BaseModel):
@@ -39,6 +41,7 @@ class GameOut(BaseModel):
     comment_count: int = 0
     stopwords: list[str] = []
     discord_channel_ids: list[str] = []
+    qq_group_ids: list[str] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}

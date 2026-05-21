@@ -12,6 +12,19 @@ from app.crawlers.scheduler import run_crawl, _get_platform_app_id
 router = APIRouter(prefix="/api/crawlers", tags=["crawlers"])
 
 
+@router.get("/schedule")
+async def get_schedule(_: User = Depends(get_current_user)):
+    from app.crawlers.scheduler import scheduler
+    from app.config import get_settings
+    job = scheduler.get_job("crawl_all")
+    next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+    return {
+        "enabled": job is not None,
+        "interval_minutes": get_settings().crawler_interval_minutes,
+        "next_run_time": next_run,
+    }
+
+
 @router.post("/{platform}/run")
 async def trigger_crawl(
     platform: str,

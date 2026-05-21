@@ -5,6 +5,7 @@
 - Docker Desktop for Windows
 - Python 3.11+
 - Node.js 20+
+- Windows Terminal（`winget install Microsoft.WindowsTerminal`，一键启动脚本依赖）
 
 ## 项目路径
 
@@ -65,52 +66,54 @@ pip install -r backend/requirements.txt
 
 ## 日常启动
 
-### 1. 启动数据库
-
-```bash
-docker-compose up -d db
-```
-
-等 Docker 日志出现 `database system is ready to accept connections`。
-
-### 2. 初始化数据库（仅首次）
+### 1. 初始化数据库（仅首次）
 
 ```bash
 .venv\Scripts\python backend/manage.py initdb
 .venv\Scripts\python backend/manage.py enable_vector
 ```
 
-### 3. 创建登录账号（仅首次）
+### 2. 创建登录账号（仅首次）
 
 ```bash
 .venv\Scripts\python backend/manage.py adduser admin <你的密码> 管理员
 ```
 
-### 4. 启动后端（终端 1）
+### 3. 一键启动（推荐）
+
+双击项目根目录的 **`启动.bat`**。
+
+脚本会自动：
+1. 检查并启动 Docker 数据库
+2. 用 **Windows Terminal** 打开三个标签页：`NapCat` / `Backend` / `Frontend`
+
+**最小化** Windows Terminal 保持服务运行；**关闭**则停止所有服务。
+
+> **NapCat 首次或登录态过期**：在 NapCat 标签页里改手动运行 `napcat.bat` 扫码登录，之后重启即可恢复 `napcat.quick.bat` 静默模式。
+
+### 4. 登录
+
+打开 `http://localhost:5173`，用第 2 步创建的账号登录。
+
+---
+
+### 手动启动（调试用）
+
+如需单独启动各服务：
 
 ```powershell
-cd backend
+# 数据库
+docker-compose up -d db
+
+# NapCat（QQ 群爬虫）
+Set-Location 'D:\Program Files\NapCat.44498.Shell'; .\napcat.quick.bat
+
+# 后端（在 backend 目录）
 ..\.venv\Scripts\uvicorn app.main:app --reload --port 8001 --host 0.0.0.0
-```
 
-> `--host 0.0.0.0` 使后端监听所有网卡，局域网内可访问。仅本机使用时去掉该参数也可正常运行。
-
-后端地址：`http://localhost:8001`  
-API 文档：`http://localhost:8001/docs`
-
-### 5. 启动前端（终端 2）
-
-```bash
-cd frontend
-npm install   # 首次或依赖变更时
+# 前端（在 frontend 目录）
 npm run dev
 ```
-
-前端地址：`http://localhost:5173`
-
-### 6. 登录
-
-打开 `http://localhost:5173`，用第 3 步创建的账号登录。
 
 ---
 
@@ -253,12 +256,18 @@ http://192.168.1.100:5173
 ## 快速参考
 
 ```powershell
-# 启动数据库
+# 一键启动（推荐）
+双击 启动.bat
+
+# 单独启动数据库
 docker-compose up -d db
 
-# 启动后端（在 backend 目录）
+# 单独启动后端（在 backend 目录）
 ..\.venv\Scripts\uvicorn app.main:app --reload --port 8001 --host 0.0.0.0
 
-# 启动前端（在 frontend 目录）
+# 单独启动前端（在 frontend 目录）
 npm run dev
+
+# 单独启动 NapCat
+Set-Location 'D:\Program Files\NapCat.44498.Shell'; .\napcat.quick.bat
 ```

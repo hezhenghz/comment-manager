@@ -26,4 +26,4 @@ if ($conn) {
 # 2. 启动后端
 Write-Host "启动后端，端口 $Port ..."
 Set-Location "$PSScriptRoot\backend"
-..\.venv\Scripts\uvicorn app.main:app --reload --port $Port
+..\.venv\Scripts\uvicorn app.main:app --reload --port $Port --host 0.0.0.0

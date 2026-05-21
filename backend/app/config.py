@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # Discord
     discord_bot_token: str = ""
 
+    # QQ (NapCat / LagRange OneBot v11 HTTP API)
+    qq_napcat_url: str = ""        # e.g. http://127.0.0.1:3000
+    qq_access_token: str = ""      # access_token，留空则不带 Authorization 头
+    qq_at_always_include: str = "" # 逗号分隔的 QQ 号，@ 任意一个则无条件入库，例：86114262,10001
+
     model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8"}
 
 

@@ -23,14 +23,6 @@
 - **前提**：Embedding 功能启用后才能做
 - **现状**：`/api/search` 关键词全文搜索已实现，向量搜索未做
 
-### 小黑盒爬虫 ✅
-- **现状**：已实现并验证可用
-- **使用前**：运行 `backend/setup_xiaoheihe_browser.py` 完成一次性浏览器登录（Cookie 保存后长期有效）
-- **游戏 Key**：Steam App ID（与小黑盒游戏 ID 相同）
-
-### Discord 爬虫
-- **现状**：平台注册表有占位，爬虫代码未实现
-
 ---
 
 ## 🟢 优化项
@@ -51,6 +43,17 @@
 ---
 
 ## ✅ 已完成
+
+### 2026-05-21
+- **QQ 群爬虫**：基于 NapCat / LagRange OneBot v11 HTTP API 实现；`Game` 表加 `qq_group_ids` 字段；CQ 码解析提取纯文本；`get_group_msg_history` 翻页 + `since` 增量截断
+- **QQ 消息分级过滤**：@ 指定 QQ 号（`QQ_AT_ALWAYS_INCLUDE`，逗号分隔多个）的消息无条件入库；其余消息走更严格的 AI 过滤（提高门槛，出错时丢弃而非保留）
+- **仪表盘来源分布饼图**：扇区颜色改为与评论列表平台徽章一致；去掉右侧图例
+- **仪表盘评论分类饼图**：去掉右侧图例，改为指引线 + 分类名 + 百分比标注
+- **一键启动升级为 Windows Terminal 多标签**：`启动.bat` 改用 `wt` 打开单个 Windows Terminal 窗口，NapCat / 后端 / 前端各占一个标签页；新增 `start-napcat.ps1` 辅助脚本（解决 wt 命令行中 `;` 歧义问题）；最小化窗口可保持服务运行
+- **游戏管理爬取时间 UTC 修复**：`formatTime` 补加 `Z` 后缀，修复完成时间比本地时间早 8 小时的问题（后端 `datetime.utcnow()` 序列化无时区标识，JS 误当本地时间）
+- **爬取完成时间实时更新**：手动爬取完成后 `fetchTrackedJob` 主动调用 `loadJobs` 刷新显示时间；定时爬取依赖 3s `pollTimer` 自动更新
+- **进度条预计时间改为历史实际耗时**：新增 `crawlDurationSec` ref，页面加载及每次爬取完成时记录实际耗时（按 game+platform 区分），无历史记录时回落硬编码默认值
+- **游戏管理配置提示精简**：移除 Discord 频道 ID 和 QQ 群号配置区域下方的两行说明文字
 
 ### 2026-05-20
 - **小黑盒分页修复**：`total_page` 固定返回 100 不可信，改用签名 URL 里的 `limit=10` 作为 offset 步长，连续 2 次无新增才终止，从只抓 19 条恢复到全量抓取

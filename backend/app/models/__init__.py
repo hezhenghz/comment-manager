@@ -16,6 +16,7 @@ class Game(Base):
     icon_url: Mapped[str | None] = mapped_column(String(1024))
     stopwords: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     discord_channel_ids: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    qq_group_ids: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     comments: Mapped[list["Comment"]] = relationship(back_populates="game", cascade="all, delete-orphan")

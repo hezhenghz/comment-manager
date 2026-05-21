@@ -14,16 +14,33 @@ const PLATFORM_LABEL: Record<string, string> = {
   discord: 'Discord', qq: 'QQ群', xiaoheihe: '小黑盒',
 };
 
+const PLATFORM_COLOR: Record<string, string> = {
+  steam_store: '#4a9eff',
+  steam_hub:   '#4caf74',
+  discord:     '#7289da',
+  qq:          '#12b7f5',
+  xiaoheihe:   '#ff781e',
+};
+
 const props = defineProps<{ data: any[] }>();
 
 const option = computed(() => ({
   tooltip: { trigger: 'item' },
+  legend: { show: false },
   series: [{
     type: 'pie',
     radius: '65%',
+    center: ['50%', '50%'],
     itemStyle: { borderRadius: 4 },
-    label: { color: '#9ca3af' },
-    data: props.data.map((d: any) => ({ name: PLATFORM_LABEL[d.platform] ?? d.platform, value: d.count })),
+    label: {
+      color: '#9ca3af',
+      formatter: ({ name, percent }: any) => `${name}\n${percent}%`,
+    },
+    data: props.data.map((d: any) => ({
+      name: PLATFORM_LABEL[d.platform] ?? d.platform,
+      value: d.count,
+      itemStyle: { color: PLATFORM_COLOR[d.platform] ?? '#6b7280' },
+    })),
   }],
 }));
 </script>

@@ -367,6 +367,9 @@ def _get_platform_app_id(game, platform: str) -> str | None:
     elif platform == "discord":
         ids = game.discord_channel_ids
         return ",".join(ids) if ids else None
+    elif platform == "qq":
+        ids = game.qq_group_ids
+        return ",".join(ids) if ids else None
     return None
 
 

@@ -1,6 +1,6 @@
 # Comment Manager — 产品文档
 
-> 最后更新：2026-05-20
+> 最后更新：2026-05-21
 
 ---
 
@@ -165,7 +165,7 @@
 | Steam 讨论区 | steam_hub | ✅ 可用 | 只含楼主原帖 |
 | 小黑盒 | xiaoheihe | ✅ 可用 | Playwright 持久 Profile；首次需浏览器登录初始化 |
 | Discord | discord | ✅ 可用 | 通过 Bot Token + 频道 ID 拉取消息 |
-| QQ群 | qq | ⏳ 预留 | 接口已注册，爬虫未实现 |
+| QQ群 | qq | ✅ 可用 | NapCat / LagRange OneBot v11 HTTP API；专用小号登录；@ 指定 QQ 号无条件入库 |
 
 ---
 
@@ -179,6 +179,7 @@ Game
   icon_url            VARCHAR NULLABLE
   stopwords           TEXT[]
   discord_channel_ids TEXT[]
+  qq_group_ids        TEXT[]
   created_at          DATETIME
 
 Comment
@@ -255,7 +256,6 @@ CrawlJob
 
 - Embedding 及向量去重（pgvector 已安装，Qwen API 返回 400，功能延后）
 - 语义搜索（依赖 Embedding）
-- QQ 群爬虫（接口已预留）
 - Alembic 数据库迁移（现阶段用 `create_all`，Schema 变更手动执行 SQL）
 - Redis 缓存
 - 钉钉 / 邮件等外部告警渠道
