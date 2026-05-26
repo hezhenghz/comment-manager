@@ -50,7 +50,7 @@ function formatTime(t: string | null) {
 
 async function fetchLatest() {
   try {
-    const params: any = { page: 1, page_size: 20 };
+    const params: any = { page: 1, page_size: 20, exclude_platform: 'qq,discord' };
     if (props.gameId) params.game_id = props.gameId;
     const { data } = await api.get('/comments', { params });
     comments.value = data.items;

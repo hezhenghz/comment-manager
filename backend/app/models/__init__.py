@@ -52,6 +52,8 @@ class Comment(Base):
     thumbs_down: Mapped[int | None] = mapped_column(Integer)
     raw_json: Mapped[dict | None] = mapped_column(JSONB, name="raw_json")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # BUG 处理状态：None=未处理, accepted=已接受, completed=已完成
+    bug_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     game: Mapped["Game"] = relationship(back_populates="comments")
 
@@ -94,6 +96,22 @@ class AlertEvent(Base):
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
 
     rule: Mapped["AlertRule"] = relationship(back_populates="events")
+
+
+class QQTopic(Base):
+    __tablename__ = "qq_topics"
+
+    id:          Mapped[uuid.UUID]       = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    game_id:     Mapped[uuid.UUID]       = mapped_column(UUID(as_uuid=True), ForeignKey("games.id"), nullable=False, index=True)
+    title:       Mapped[str]             = mapped_column(String(255), nullable=False)
+    summary:     Mapped[str]             = mapped_column(Text, nullable=False)
+    category:    Mapped[str | None]      = mapped_column(String(50))
+    sentiment:   Mapped[str | None]      = mapped_column(String(20))
+    group_id:    Mapped[str | None]       = mapped_column(String(50))        # 来源 QQ 群 ID
+    comment_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), default=list)
+    started_at:  Mapped[datetime | None] = mapped_column(DateTime)
+    ended_at:    Mapped[datetime | None] = mapped_column(DateTime)
+    created_at:  Mapped[datetime]        = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class CrawlJob(Base):

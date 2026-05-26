@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
-from app.models import Comment, Game, User
+from app.models import Comment, Game, User, QQTopic
 from app.auth import get_current_user
 from app.schemas.schemas import DashboardStats, TrendPoint, CategoryDist, SourceDist, WordCloudItem
 
@@ -21,11 +21,12 @@ async def get_stats(
     if game_id:
         base = base.where(Comment.game_id == game_id)
 
-    total = (await db.execute(base)).scalar() or 0
+    # 评论模块隐藏了 QQ/Discord 消息，侧边栏计数同步排除这两类群聊平台
+    non_chat_base = base.where(Comment.platform.notin_(["qq", "discord"]))
+    total = (await db.execute(non_chat_base)).scalar() or 0
 
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    today_q = base.where(Comment.published_at >= today_start)
-    today_new = (await db.execute(today_q)).scalar() or 0
+    today_new = (await db.execute(non_chat_base.where(Comment.published_at >= today_start))).scalar() or 0
 
     bug_q = base.where(Comment.category == "bug")
     bug_count = (await db.execute(bug_q)).scalar() or 0
@@ -54,6 +55,11 @@ async def get_stats(
     else:
         negative_review_rate = None
 
+    topic_q = select(func.count(QQTopic.id))
+    if game_id:
+        topic_q = topic_q.where(QQTopic.game_id == game_id)
+    topic_count = (await db.execute(topic_q)).scalar() or 0
+
     return DashboardStats(
         total_comments=total,
         today_new=today_new,
@@ -61,6 +67,7 @@ async def get_stats(
         today_bug_count=today_bug_count,
         suggestion_count=suggestion_count,
         today_suggestion_count=today_suggestion_count,
+        topic_count=topic_count,
         negative_review_rate=negative_review_rate,
     )
 

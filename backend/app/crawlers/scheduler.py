@@ -216,47 +216,72 @@ async def _run_crawl_inner(
             await _mark_job_failed(str(job_uuid), str(e))
         return
 
-    # 无新增则跳过 Phase 2
+    # 无新增则跳过 Phase 2（0 新增时不自动重算话题，手动「重新聚合」按钮仍可用）
     if not new_comment_ids:
         await _trigger_alerts(game_id)
         return
 
-    # ── Phase 2：AI 分析阶段 ───────────────────────────────────────────────────
-    try:
-        from app.ai.pipeline import run_pipeline
-        from app.database import async_session
-        from app.models import Comment, CrawlJob
+    # ── Phase 2+3：AI 分析 ────────────────────────────────────────────────────
+    if platform == "qq":
+        # QQ 平台：联合分类 + 话题聚合（仅处理新消息，不全量重算）
+        try:
+            from app.ai.qq_analyzer import analyze_new_qq_comments
+            from app.database import async_session
+            from app.models import CrawlJob
 
-        async with async_session() as db2:
-            job2 = await db2.get(CrawlJob, job_uuid)
-            total = len(new_comment_ids)
+            async with async_session() as db2:
+                job2 = await db2.get(CrawlJob, job_uuid)
+                await analyze_new_qq_comments(game_id, new_comment_ids, db2)
+                job2.ai_done = len(new_comment_ids)
+                job2.status = "done"
+                job2.phase = None
+                job2.finished_at = datetime.utcnow()
+                await db2.commit()
 
-            for i, cid in enumerate(new_comment_ids):
-                comment = await db2.get(Comment, cid)
-                if comment:
-                    try:
-                        await run_pipeline(comment, db2)
-                    except Exception as e:
-                        logger.warning(f"[scheduler] AI pipeline 失败 comment={cid}: {e}")
+            logger.info(f"[scheduler] {platform}/{game_name} 联合分析完成：{len(new_comment_ids)} 条")
 
-                job2.ai_done = i + 1
-                # 每 10 条提交一次（或最后一条），让前端能看到进度
-                if (i + 1) % 10 == 0 or (i + 1) == total:
-                    await db2.commit()
+        except Exception as e:
+            import traceback
+            logger.error(f"[scheduler] QQ 联合分析失败: {e}\n{traceback.format_exc()}")
+            await _mark_job_failed(str(job_uuid), f"QQ 联合分析失败: {e}")
 
-            job2.status = "done"
-            job2.phase = None
-            job2.finished_at = datetime.utcnow()
-            await db2.commit()
+    else:
+        # 其他平台：原有逐条 AI pipeline
+        try:
+            from app.ai.pipeline import run_pipeline
+            from app.database import async_session
+            from app.models import Comment, CrawlJob
 
-            logger.info(f"[scheduler] {platform}/{game_name} AI 分析完成：共 {total} 条")
+            async with async_session() as db2:
+                job2 = await db2.get(CrawlJob, job_uuid)
+                total = len(new_comment_ids)
 
-    except Exception as e:
-        import traceback
-        logger.error(f"[scheduler] Phase2 异常 platform={platform}: "
-                     f"{e}\n{traceback.format_exc()}")
-        await _mark_job_failed(str(job_uuid), f"AI 分析阶段失败: {e}")
-        return
+                for i, cid in enumerate(new_comment_ids):
+                    comment = await db2.get(Comment, cid)
+                    if comment:
+                        try:
+                            await run_pipeline(comment, db2)
+                        except Exception as e:
+                            logger.warning(f"[scheduler] AI pipeline 失败 comment={cid}: {e}")
+
+                    job2.ai_done = i + 1
+                    # 每 10 条提交一次（或最后一条），让前端能看到进度
+                    if (i + 1) % 10 == 0 or (i + 1) == total:
+                        await db2.commit()
+
+                job2.status = "done"
+                job2.phase = None
+                job2.finished_at = datetime.utcnow()
+                await db2.commit()
+
+                logger.info(f"[scheduler] {platform}/{game_name} AI 分析完成：共 {total} 条")
+
+        except Exception as e:
+            import traceback
+            logger.error(f"[scheduler] Phase2 异常 platform={platform}: "
+                         f"{e}\n{traceback.format_exc()}")
+            await _mark_job_failed(str(job_uuid), f"AI 分析阶段失败: {e}")
+            return
 
     await _trigger_alerts(game_id)
 

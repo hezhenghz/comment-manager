@@ -12,6 +12,45 @@ from app.crawlers.scheduler import run_crawl, _get_platform_app_id
 router = APIRouter(prefix="/api/crawlers", tags=["crawlers"])
 
 
+@router.get("/qq/group-names")
+async def get_qq_group_names(
+    game_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """返回该游戏所有 QQ 群的真实群名 {group_id: group_name}，从 NapCat 实时查询。"""
+    from app.config import get_settings
+    import httpx
+
+    result = await db.execute(select(Game).where(Game.id == game_id))
+    game = result.scalar_one_or_none()
+    if not game or not game.qq_group_ids:
+        return {}
+
+    settings = get_settings()
+    if not settings.qq_napcat_url:
+        return {}
+
+    names: dict[str, str] = {}
+    headers = {}
+    if settings.qq_access_token:
+        headers["Authorization"] = f"Bearer {settings.qq_access_token}"
+
+    async with httpx.AsyncClient(
+        base_url=settings.qq_napcat_url.rstrip("/"), headers=headers, timeout=10
+    ) as client:
+        for gid in game.qq_group_ids:
+            try:
+                r = await client.post("/get_group_info", json={"group_id": int(gid)})
+                data = (r.json().get("data") or {})
+                name = data.get("group_name") or gid
+                names[gid] = name
+            except Exception:
+                names[gid] = gid  # 查询失败时降级为群 ID
+
+    return names
+
+
 @router.get("/schedule")
 async def get_schedule(_: User = Depends(get_current_user)):
     from app.crawlers.scheduler import scheduler

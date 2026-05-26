@@ -67,6 +67,8 @@ class CommentOut(BaseModel):
     game_name: str | None = None
     # thumbs_up: Steam=0/1(不推荐/推荐), 小黑盒=1-5(星级), 其他来源=None
     thumbs_up: int | None = None
+    # BUG 处理状态：None=未处理, accepted=已接受, completed=已完成
+    bug_status: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -98,6 +100,7 @@ class DashboardStats(BaseModel):
     today_bug_count: int
     suggestion_count: int
     today_suggestion_count: int
+    topic_count: int = 0
     negative_review_rate: float | None  # None = 无 steam_store 数据
 
 

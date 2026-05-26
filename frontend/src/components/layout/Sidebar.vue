@@ -11,6 +11,7 @@
       <router-link to="/comments">评论<span v-if="counts.total" class="nav-count">（{{ counts.total }}）</span></router-link>
       <router-link to="/bugs">BUG<span v-if="counts.bug" class="nav-count">（{{ counts.bug }}）</span></router-link>
       <router-link to="/suggestions">建议<span v-if="counts.suggestion" class="nav-count">（{{ counts.suggestion }}）</span></router-link>
+      <router-link to="/topics">话题<span v-if="counts.topic" class="nav-count">（{{ counts.topic }}）</span></router-link>
       <router-link v-if="auth.user?.is_admin" to="/games">游戏管理</router-link>
     </nav>
     <div class="user" @click="logout">
@@ -30,7 +31,7 @@ import api from '../../api';
 const router = useRouter();
 const auth = useAuthStore();
 const gameStore = useGameStore();
-const counts = ref({ total: 0, bug: 0, suggestion: 0 });
+const counts = ref({ total: 0, bug: 0, suggestion: 0, topic: 0 });
 
 onMounted(async () => {
   await gameStore.loadGames();
@@ -44,7 +45,7 @@ async function fetchCounts() {
   try {
     const params = gameStore.selectedGameId ? { game_id: gameStore.selectedGameId } : {};
     const { data } = await api.get('/dashboard/stats', { params });
-    counts.value = { total: data.total_comments, bug: data.bug_count, suggestion: data.suggestion_count };
+    counts.value = { total: data.total_comments, bug: data.bug_count, suggestion: data.suggestion_count, topic: data.topic_count ?? 0 };
   } catch {}
 }
 

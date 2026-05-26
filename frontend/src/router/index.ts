@@ -13,6 +13,7 @@ const routes = [
       { path: 'bugs', component: () => import('../components/comments/CommentTable.vue'), props: { fixedCategory: 'bug' } },
       { path: 'suggestions', component: () => import('../components/comments/CommentTable.vue'), props: { fixedCategory: 'suggestion' } },
       { path: 'games', component: () => import('../components/games/GameList.vue'), meta: { adminOnly: true } },
+      { path: 'topics', component: () => import('../components/topics/TopicList.vue') },
     ],
   },
 ];
