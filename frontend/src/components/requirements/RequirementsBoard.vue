@@ -57,14 +57,56 @@
 
             <!-- 玩家原始内容（可折叠） -->
             <div class="card-section">
-              <div class="section-toggle" @click="toggleOriginal(card.id)">
+              <div class="section-toggle" @click="toggleOriginal(card)">
                 <span class="toggle-icon">{{ expandedOriginal.has(card.id) ? '▼' : '▶' }}</span>
                 <span class="section-label">玩家原始内容</span>
                 <span v-if="card.source_snapshot?.author_name" class="author-hint">{{ card.source_snapshot.author_name }}</span>
               </div>
-              <div v-if="expandedOriginal.has(card.id)" class="original-content">
-                {{ card.source_snapshot?.content || card.source_snapshot?.summary || '—' }}
-              </div>
+              <template v-if="expandedOriginal.has(card.id)">
+                <div class="original-content">
+                  {{ card.source_snapshot?.content || card.source_snapshot?.summary || '—' }}
+                </div>
+
+                <!-- 上下文（懒加载） -->
+                <div v-if="loadingCtx.has(card.id)" class="ctx-loading">加载上下文…</div>
+                <template v-else-if="contextData[card.id]">
+                  <!-- QQ / Discord 聊天上下文 -->
+                  <template v-if="contextData[card.id].type === 'chat'">
+                    <div class="ctx-title">{{ card.source_snapshot?.platform === 'discord' ? '频道上下文' : '群上下文' }}</div>
+                    <div class="ctx-messages">
+                      <div v-if="!contextData[card.id].data.prev_messages?.length && !contextData[card.id].data.next_messages?.length" class="ctx-loading">无上下文消息</div>
+                      <div v-for="(m, i) in contextData[card.id].data.prev_messages" :key="'p'+i" class="ctx-msg">
+                        <span class="ctx-time">{{ formatMsgTime(m.published_at) }}</span>
+                        <span class="ctx-name">{{ m.author_name || '匿名' }}</span>
+                        <span class="ctx-text">{{ m.content }}</span>
+                      </div>
+                      <div v-if="contextData[card.id].data.current_message" class="ctx-msg ctx-current">
+                        <span class="ctx-time">{{ formatMsgTime(contextData[card.id].data.current_message.published_at) }}</span>
+                        <span class="ctx-name ctx-name--hl">{{ contextData[card.id].data.current_message.author_name || '匿名' }}</span>
+                        <span class="ctx-text ctx-text--hl">{{ contextData[card.id].data.current_message.content }}</span>
+                      </div>
+                      <div v-for="(m, i) in contextData[card.id].data.next_messages" :key="'n'+i" class="ctx-msg">
+                        <span class="ctx-time">{{ formatMsgTime(m.published_at) }}</span>
+                        <span class="ctx-name">{{ m.author_name || '匿名' }}</span>
+                        <span class="ctx-text">{{ m.content }}</span>
+                      </div>
+                    </div>
+                  </template>
+
+                  <!-- 话题关联消息 -->
+                  <template v-else-if="contextData[card.id].type === 'topic'">
+                    <div class="ctx-title">话题关联消息（{{ contextData[card.id].data.length }} 条）</div>
+                    <div class="ctx-messages">
+                      <div v-if="!contextData[card.id].data.length" class="ctx-loading">无关联消息</div>
+                      <div v-for="m in contextData[card.id].data" :key="m.id" class="ctx-msg">
+                        <span class="ctx-time">{{ formatMsgTime(m.published_at) }}</span>
+                        <span class="ctx-name">{{ m.author_name || '匿名' }}</span>
+                        <span class="ctx-text">{{ m.content }}</span>
+                      </div>
+                    </div>
+                  </template>
+                </template>
+              </template>
             </div>
 
             <!-- 需求描述（可编辑） -->
@@ -126,6 +168,8 @@ const loading = ref(false);
 const filterType = ref('');
 const expandedOriginal = ref<Set<string>>(new Set());
 const savedId = ref<string | null>(null);
+const contextData = ref<Record<string, { type: string; data: any } | null>>({});
+const loadingCtx = ref<Set<string>>(new Set());
 
 const COLUMNS = [
   { status: 'todo',        label: '未开始' },
@@ -189,11 +233,47 @@ async function load() {
   }
 }
 
-function toggleOriginal(cardId: string) {
+function formatMsgTime(t: string | null): string {
+  if (!t) return '';
+  const iso = t.endsWith('Z') || t.includes('+') ? t : t + 'Z';
+  return new Date(iso).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+async function toggleOriginal(card: RequirementCard) {
   const next = new Set(expandedOriginal.value);
-  if (next.has(cardId)) next.delete(cardId);
-  else next.add(cardId);
+  if (next.has(card.id)) {
+    next.delete(card.id);
+    expandedOriginal.value = next;
+    return;
+  }
+  next.add(card.id);
   expandedOriginal.value = next;
+
+  // 已加载过，无需重复请求
+  if (card.id in contextData.value || loadingCtx.value.has(card.id)) return;
+
+  const platform = card.source_snapshot?.platform;
+  const isChatPlatform = platform === 'qq' || platform === 'discord';
+  const isChatSource = ['comment', 'bug', 'suggestion'].includes(card.source_type);
+  const isTopicSource = card.source_type === 'topic';
+
+  if (!isChatSource && !isTopicSource) return;       // 非群聊、非话题，无上下文
+  if (isChatSource && !isChatPlatform) return;       // 评论类但不是群聊平台
+
+  const s = new Set(loadingCtx.value); s.add(card.id); loadingCtx.value = s;
+  try {
+    if (isChatSource && isChatPlatform) {
+      const { data } = await api.get(`/comments/${card.source_id}/chat-context`);
+      contextData.value = { ...contextData.value, [card.id]: { type: 'chat', data } };
+    } else if (isTopicSource) {
+      const { data } = await api.get(`/topics/${card.source_id}/comments`);
+      contextData.value = { ...contextData.value, [card.id]: { type: 'topic', data } };
+    }
+  } catch {
+    contextData.value = { ...contextData.value, [card.id]: null };
+  } finally {
+    const s2 = new Set(loadingCtx.value); s2.delete(card.id); loadingCtx.value = s2;
+  }
 }
 
 async function onTextBlur(card: RequirementCard, newText: string) {
@@ -418,6 +498,50 @@ h2 {
   padding: 6px 8px;
   border-radius: 4px;
 }
+
+/* 上下文 */
+.ctx-loading { font-size: 11px; color: var(--text-muted); padding: 4px 0; font-style: italic; }
+.ctx-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 6px;
+  margin-bottom: 3px;
+}
+.ctx-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+.ctx-msg {
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border);
+  align-items: baseline;
+}
+.ctx-msg:last-child { border-bottom: none; }
+.ctx-time { color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
+.ctx-name { color: var(--accent); white-space: nowrap; flex-shrink: 0; font-weight: 500; min-width: 40px; }
+.ctx-text { color: var(--text-secondary); line-height: 1.4; word-break: break-word; }
+.ctx-current {
+  background: rgba(234,179,8,0.08);
+  border-radius: 3px;
+  margin: 1px -4px;
+  padding: 2px 4px;
+  border-bottom: none !important;
+}
+.ctx-current + .ctx-msg { border-top: 1px solid var(--border); }
+.ctx-name--hl { color: #e9a800 !important; }
+.ctx-text--hl { color: #e9c46a !important; font-weight: 500; }
 
 .req-textarea {
   width: 100%;
