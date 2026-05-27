@@ -30,6 +30,7 @@ class GameUpdate(BaseModel):
     icon_url: str | None = None
     stopwords: list[str] | None = None
     discord_channel_ids: list[str] | None = None
+    discord_channel_names: dict | None = None   # {channel_id: 自定义名称}
     qq_group_ids: list[str] | None = None
 
 
@@ -41,6 +42,7 @@ class GameOut(BaseModel):
     comment_count: int = 0
     stopwords: list[str] = []
     discord_channel_ids: list[str] = []
+    discord_channel_names: dict = {}            # {channel_id: 自定义名称}
     qq_group_ids: list[str] = []
     created_at: datetime
 

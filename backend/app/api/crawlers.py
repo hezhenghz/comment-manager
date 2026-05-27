@@ -51,6 +51,20 @@ async def get_qq_group_names(
     return names
 
 
+@router.get("/discord/channel-names")
+async def get_discord_channel_names(
+    game_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """返回该游戏 Discord 频道的自定义名称 {channel_id: name}（由用户在游戏管理界面填写）。"""
+    result = await db.execute(select(Game).where(Game.id == game_id))
+    game = result.scalar_one_or_none()
+    if not game:
+        return {}
+    return game.discord_channel_names or {}
+
+
 @router.get("/schedule")
 async def get_schedule(_: User = Depends(get_current_user)):
     from app.crawlers.scheduler import scheduler

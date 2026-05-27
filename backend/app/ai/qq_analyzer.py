@@ -169,6 +169,7 @@ async def _analyze_batch(batch: list, game_uuid: uuid.UUID, db: AsyncSession) ->
         sent = topic_data.get("sentiment")
         db.add(QQTopic(
             game_id=game_uuid,
+            platform="qq",
             title=topic_data.get("title", "未命名话题")[:255],
             summary=topic_data.get("summary", ""),
             category=cat if cat in _VALID_CATEGORIES else None,

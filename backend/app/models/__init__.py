@@ -15,7 +15,8 @@ class Game(Base):
     steam_app_id: Mapped[str | None] = mapped_column(String(50))
     icon_url: Mapped[str | None] = mapped_column(String(1024))
     stopwords: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
-    discord_channel_ids: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    discord_channel_ids:   Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    discord_channel_names: Mapped[dict]      = mapped_column(JSONB, default=dict)  # {channel_id: 自定义名称}
     qq_group_ids: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -107,7 +108,8 @@ class QQTopic(Base):
     summary:     Mapped[str]             = mapped_column(Text, nullable=False)
     category:    Mapped[str | None]      = mapped_column(String(50))
     sentiment:   Mapped[str | None]      = mapped_column(String(20))
-    group_id:    Mapped[str | None]       = mapped_column(String(50))        # 来源 QQ 群 ID
+    group_id:    Mapped[str | None]      = mapped_column(String(50))         # QQ group_id 或 Discord channel_id
+    platform:    Mapped[str | None]      = mapped_column(String(50))         # "qq" | "discord" | None(旧数据)
     comment_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), default=list)
     started_at:  Mapped[datetime | None] = mapped_column(DateTime)
     ended_at:    Mapped[datetime | None] = mapped_column(DateTime)

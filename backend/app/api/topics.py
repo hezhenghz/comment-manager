@@ -21,6 +21,7 @@ class TopicOut(BaseModel):
     category: str | None = None
     sentiment: str | None = None
     group_id: str | None = None
+    platform: str | None = None
     comment_count: int
     started_at: datetime | None = None
     ended_at: datetime | None = None
@@ -67,6 +68,7 @@ async def list_topics(
             category=t.category,
             sentiment=t.sentiment,
             group_id=t.group_id,
+            platform=t.platform,
             comment_count=len(t.comment_ids or []),
             started_at=t.started_at,
             ended_at=t.ended_at,
@@ -83,7 +85,7 @@ async def recluster_topics(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """手动触发指定游戏的 QQ 话题全量重算（后台异步执行）。"""
+    """手动触发指定游戏的 QQ/Discord 话题全量重算（后台异步执行）。"""
     import asyncio
     from app.ai.topic_cluster import cluster_topics
     from app.database import async_session

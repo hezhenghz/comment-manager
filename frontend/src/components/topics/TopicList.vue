@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h2>话题<span class="page-desc">QQ 群玩家讨论话题聚合，由 AI 自动提取</span></h2>
+      <h2>话题<span class="page-desc">QQ / Discord 群聊话题聚合，由 AI 自动提取</span></h2>
       <div class="header-actions">
         <span v-if="reclusterMsg" class="recluster-msg">{{ reclusterMsg }}</span>
         <button class="btn-recluster" :disabled="reclustering" @click="recluster">
@@ -12,7 +12,7 @@
 
     <div v-if="loading" class="empty">加载中…</div>
     <div v-else-if="!topics.length" class="empty">
-      暂无话题，触发一次 QQ 群爬取后自动生成
+      暂无话题，触发一次 QQ/Discord 爬取后自动生成
     </div>
 
     <div v-else class="topic-list">
@@ -26,7 +26,12 @@
         <div class="topic-header">
           <span class="topic-title">{{ t.title }}</span>
           <div class="topic-meta">
-            <span v-if="t.group_id" class="badge badge-group">{{ groupLabel(t.group_id) }}</span>
+            <span v-if="t.platform" class="badge" :class="t.platform === 'discord' ? 'badge-discord' : 'badge-qq'">
+              {{ t.platform === 'discord' ? 'Discord' : 'QQ群' }}
+            </span>
+            <span v-if="t.group_id" class="badge badge-group">
+              {{ t.platform === 'discord' ? '频道：' : '群：' }}{{ groupLabel(t) }}
+            </span>
             <span v-if="t.category" class="badge" :class="`cat-${t.category}`">{{ CATEGORY_LABEL[t.category] ?? t.category }}</span>
             <span v-if="t.sentiment" class="badge" :class="`sent-${t.sentiment}`">{{ SENTIMENT_LABEL[t.sentiment] ?? t.sentiment }}</span>
             <span class="meta-text">{{ formatTimeRange(t.started_at, t.ended_at) }}</span>
@@ -84,6 +89,7 @@ interface TopicItem {
   category: string | null;
   sentiment: string | null;
   group_id: string | null;
+  platform: string | null;
   comment_count: number;
   started_at: string | null;
   ended_at: string | null;
@@ -108,7 +114,8 @@ const topicComments = ref<Record<string, CommentItem[]>>({});
 const loadingComments = ref<Set<string>>(new Set());
 const reclustering = ref(false);
 const reclusterMsg = ref('');
-const groupNames = ref<Record<string, string>>({});  // group_id → 真实群名
+const groupNames = ref<Record<string, string>>({});         // QQ group_id → 真实群名（NapCat 实时查询）
+const discordChannelNames = ref<Record<string, string>>({});  // Discord channel_id → 自定义名称
 
 async function loadGroupNames() {
   const gameId = gameStore.selectedGameId;
@@ -116,6 +123,15 @@ async function loadGroupNames() {
   try {
     const { data } = await api.get(`/crawlers/qq/group-names?game_id=${gameId}`);
     groupNames.value = data;
+  } catch {}
+}
+
+async function loadDiscordChannelNames() {
+  const gameId = gameStore.selectedGameId;
+  if (!gameId) return;
+  try {
+    const { data } = await api.get(`/crawlers/discord/channel-names?game_id=${gameId}`);
+    discordChannelNames.value = data;
   } catch {}
 }
 
@@ -177,10 +193,13 @@ function formatMsgTime(t: string | null): string {
   return new Date(iso).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-function groupLabel(groupId: string): string {
-  // 优先用 NapCat 返回的真实群名，没有则降级为群 ID
-  const realName = groupNames.value[groupId];
-  return realName ? realName : groupId;
+function groupLabel(t: TopicItem): string {
+  if (!t.group_id) return '';
+  if (t.platform === 'discord') {
+    return discordChannelNames.value[t.group_id] || t.group_id;
+  }
+  // QQ：优先用 NapCat 返回的真实群名，没有则降级为群 ID
+  return groupNames.value[t.group_id] || t.group_id;
 }
 
 async function recluster() {
@@ -200,10 +219,10 @@ async function recluster() {
   }
 }
 
-onMounted(() => { load(); loadGroupNames(); });
+onMounted(() => { load(); loadGroupNames(); loadDiscordChannelNames(); });
 watch(() => gameStore.selectedGameId, () => {
   page.value = 1; expanded.value = new Set(); topicComments.value = {};
-  load(); loadGroupNames();
+  load(); loadGroupNames(); loadDiscordChannelNames();
 });
 </script>
 
@@ -316,6 +335,8 @@ h2 {
   white-space: nowrap;
 }
 .badge-group    { background: var(--bg-hover); color: var(--text-secondary); font-size: 11px; }
+.badge-qq       { background: rgba(9,187,7,0.12);   color: #09bb07; }
+.badge-discord  { background: rgba(88,101,242,0.12); color: #5865f2; }
 .cat-bug        { background: rgba(239,68,68,0.12);  color: var(--danger); }
 .cat-suggestion { background: rgba(99,102,241,0.12); color: var(--accent); }
 .cat-complaint  { background: rgba(245,158,11,0.12); color: var(--warning); }

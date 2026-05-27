@@ -159,10 +159,30 @@
           <div v-if="discordDupWarning[g.id]" class="sw-dup-hint">ID 格式无效或已存在（应为 17-19 位纯数字）</div>
           <div v-if="editingDiscordIds[g.id]?.length" class="sw-tags-list">
             <span v-for="(chId, i) in editingDiscordIds[g.id]" :key="i" class="sw-tag discord-tag">
-              {{ chId }}<button class="sw-del" @click="removeDiscordChannel(g.id, i)">×</button>
+              <!-- 内联重命名：点击名称触发 -->
+              <template v-if="renamingChannel?.gameId === g.id && renamingChannel?.channelId === chId">
+                <input
+                  class="ch-name-input"
+                  v-model="renameInput"
+                  placeholder="输入频道名称"
+                  @blur="saveChannelName(g.id, chId)"
+                  @keydown.enter.prevent="saveChannelName(g.id, chId)"
+                  @keydown.escape.prevent="renamingChannel = null"
+                  @click.stop
+                />
+              </template>
+              <template v-else>
+                <span
+                  class="ch-label"
+                  :title="'点击重命名\n频道 ID：' + chId"
+                  @click.stop="startRename(g.id, chId)"
+                >{{ discordChannelNames[g.id]?.[chId] || chId }}</span>
+              </template>
+              <button class="sw-del" @click.stop="removeDiscordChannel(g.id, i)">×</button>
             </span>
           </div>
           <div v-else class="discord-hint">尚未配置频道 ID</div>
+          <div class="discord-hint" style="margin-top:4px">💡 点击频道 ID 可设置自定义名称</div>
         </div>
 
         <!-- QQ 群号配置 -->
@@ -251,6 +271,7 @@ interface GameRow {
   icon_url: string | null;
   comment_count: number;
   discord_channel_ids: string[];
+  discord_channel_names: Record<string, string>;
   qq_group_ids: string[];
   created_at: string;
 }
@@ -292,6 +313,11 @@ const editingDiscordIds = ref<Record<string, string[]>>({});
 const discordInput = ref<Record<string, string>>({});
 const discordSaveStatus = ref<Record<string, string | null>>({});
 const discordDupWarning = ref<Record<string, boolean>>({});
+
+// Discord 频道自定义名称
+const discordChannelNames = ref<Record<string, Record<string, string>>>({}); // gameId → {channelId → name}
+const renamingChannel = ref<{ gameId: string; channelId: string } | null>(null);
+const renameInput = ref('');
 
 const editingQQIds = ref<Record<string, string[]>>({});
 const qqInput = ref<Record<string, string>>({});
@@ -478,6 +504,8 @@ async function load() {
     if (!editingQQIds.value[g.id]) {
       editingQQIds.value[g.id] = [...(g.qq_group_ids ?? [])];
     }
+    // 始终同步最新的频道命名（服务端可能更新）
+    discordChannelNames.value[g.id] = { ...(g.discord_channel_names ?? {}) };
   }
 }
 
@@ -567,6 +595,35 @@ async function removeDiscordChannel(gameId: string, idx: number) {
   list.splice(idx, 1);
   editingDiscordIds.value = { ...editingDiscordIds.value, [gameId]: list };
   await _persistDiscordChannels(gameId);
+}
+
+// ── Discord 频道命名 ──────────────────────────────────────────────────────────
+function startRename(gameId: string, channelId: string) {
+  renamingChannel.value = { gameId, channelId };
+  renameInput.value = discordChannelNames.value[gameId]?.[channelId] ?? '';
+  // nextTick 后聚焦
+  import('vue').then(({ nextTick }) => nextTick(() => {
+    const el = document.querySelector('.ch-name-input') as HTMLInputElement | null;
+    el?.focus();
+    el?.select();
+  }));
+}
+
+async function saveChannelName(gameId: string, channelId: string) {
+  renamingChannel.value = null;
+  const name = renameInput.value.trim();
+  const names = { ...(discordChannelNames.value[gameId] ?? {}) };
+  if (name) {
+    names[channelId] = name;
+  } else {
+    delete names[channelId]; // 空值 = 清除命名，显示回原始 ID
+  }
+  discordChannelNames.value = { ...discordChannelNames.value, [gameId]: names };
+  try {
+    await api.put(`/games/${gameId}`, { discord_channel_names: names });
+  } catch {
+    // 静默失败，下次 load 会重新同步
+  }
 }
 
 // ── QQ Groups ─────────────────────────────────────────────────────────────
@@ -859,6 +916,25 @@ h2 { font-size: 22px; margin-bottom: 12px; }
 .discord-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
 .discord-tag { font-family: monospace; }
 .qq-tag { font-family: monospace; }
+
+/* ── 频道命名内联编辑 ── */
+.ch-label {
+  cursor: pointer;
+  border-bottom: 1px dashed var(--text-muted);
+  padding-bottom: 1px;
+}
+.ch-label:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.ch-name-input {
+  width: 120px;
+  padding: 1px 4px;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: monospace;
+  outline: none;
+}
 
 /* ── Shared input/tag styles ── */
 .sw-input {

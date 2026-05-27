@@ -269,6 +269,17 @@ async def _run_crawl_inner(
                     if (i + 1) % 10 == 0 or (i + 1) == total:
                         await db2.commit()
 
+                # Discord 额外步骤：话题聚合（分类已由 pipeline 完成，仅追加话题）
+                if platform == "discord":
+                    try:
+                        from app.ai.topic_cluster import analyze_new_discord_topics
+                        from app.database import async_session as _as
+                        async with _as() as db3:
+                            await analyze_new_discord_topics(game_id, new_comment_ids, db3)
+                        logger.info(f"[scheduler] {platform}/{game_name} Discord 话题聚合完成")
+                    except Exception as e_topic:
+                        logger.warning(f"[scheduler] Discord 话题聚合失败（不影响爬取状态）: {e_topic}")
+
                 job2.status = "done"
                 job2.phase = None
                 job2.finished_at = datetime.utcnow()
