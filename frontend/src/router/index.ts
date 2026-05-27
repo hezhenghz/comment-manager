@@ -15,6 +15,7 @@ const routes = [
       { path: 'games', component: () => import('../components/games/GameList.vue'), meta: { adminOnly: true } },
       { path: 'topics', component: () => import('../components/topics/TopicList.vue') },
       { path: 'requirements', component: () => import('../components/requirements/RequirementsBoard.vue') },
+      { path: 'chat', component: () => import('../components/chat/GameChat.vue') },
     ],
   },
 ];

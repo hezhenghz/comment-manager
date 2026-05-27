@@ -202,3 +202,18 @@ class AlertEventOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── 群聊 ──────────────────────────────────────────────────────────────────────
+
+class ChatMessageCreate(BaseModel):
+    content: str   # 最大 2000 字符
+
+
+class ChatMessageOut(BaseModel):
+    id: uuid.UUID
+    game_id: uuid.UUID
+    user_id: uuid.UUID
+    display_name: str
+    content: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
