@@ -36,6 +36,15 @@
             <span v-if="t.sentiment" class="badge" :class="`sent-${t.sentiment}`">{{ SENTIMENT_LABEL[t.sentiment] ?? t.sentiment }}</span>
             <span class="meta-text">{{ formatTimeRange(t.started_at, t.ended_at) }}</span>
             <span class="meta-text">{{ t.comment_count }} 条消息</span>
+            <span v-if="collectedIds.has(t.id)" class="collected-badge">✅ 已安排</span>
+            <button
+              v-else
+              class="btn-collect-small"
+              :disabled="collectingId === t.id"
+              @click.stop="collectTopic(t)"
+            >
+              {{ collectingId === t.id ? '…' : '📌 采集' }}
+            </button>
             <span class="expand-icon">{{ expanded.has(t.id) ? '▲' : '▼' }}</span>
           </div>
         </div>
@@ -116,6 +125,10 @@ const reclustering = ref(false);
 const reclusterMsg = ref('');
 const groupNames = ref<Record<string, string>>({});         // QQ group_id → 真实群名（NapCat 实时查询）
 const discordChannelNames = ref<Record<string, string>>({});  // Discord channel_id → 自定义名称
+
+// 需求板
+const collectedIds = ref<Set<string>>(new Set());
+const collectingId = ref<string | null>(null);
 
 async function loadGroupNames() {
   const gameId = gameStore.selectedGameId;
@@ -202,6 +215,43 @@ function groupLabel(t: TopicItem): string {
   return groupNames.value[t.group_id] || t.group_id;
 }
 
+async function loadCollectedIds() {
+  const gameId = gameStore.selectedGameId;
+  if (!gameId) return;
+  try {
+    const { data } = await api.get(`/requirements/collected-ids?game_id=${gameId}`);
+    collectedIds.value = new Set(data.source_ids as string[]);
+  } catch {}
+}
+
+async function collectTopic(t: TopicItem) {
+  if (collectingId.value || collectedIds.value.has(t.id)) return;
+  collectingId.value = t.id;
+  try {
+    await api.post('/requirements', {
+      game_id: gameStore.selectedGameId,
+      source_type: 'topic',
+      source_id: t.id,
+      source_snapshot: {
+        title:         t.title,
+        summary:       t.summary,
+        category:      t.category,
+        sentiment:     t.sentiment,
+        platform:      t.platform,
+        group_id:      t.group_id,
+        comment_count: t.comment_count,
+      },
+    });
+    collectedIds.value = new Set([...collectedIds.value, t.id]);
+  } catch (e: any) {
+    if (e?.response?.status === 409) {
+      collectedIds.value = new Set([...collectedIds.value, t.id]);
+    }
+  } finally {
+    collectingId.value = null;
+  }
+}
+
 async function recluster() {
   const gameId = gameStore.selectedGameId;
   if (!gameId) return;
@@ -219,10 +269,10 @@ async function recluster() {
   }
 }
 
-onMounted(() => { load(); loadGroupNames(); loadDiscordChannelNames(); });
+onMounted(() => { load(); loadGroupNames(); loadDiscordChannelNames(); loadCollectedIds(); });
 watch(() => gameStore.selectedGameId, () => {
   page.value = 1; expanded.value = new Set(); topicComments.value = {};
-  load(); loadGroupNames(); loadDiscordChannelNames();
+  load(); loadGroupNames(); loadDiscordChannelNames(); loadCollectedIds();
 });
 </script>
 
@@ -400,4 +450,26 @@ h2 {
 }
 .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 .pagination button:hover:not(:disabled) { border-color: var(--accent); }
+
+/* 采集按钮 */
+.btn-collect-small {
+  padding: 2px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.btn-collect-small:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-collect-small:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.collected-badge {
+  font-size: 11px;
+  color: var(--success, #22c55e);
+  font-weight: 500;
+  white-space: nowrap;
+}
 </style>

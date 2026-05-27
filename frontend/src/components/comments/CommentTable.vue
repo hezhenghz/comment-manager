@@ -159,6 +159,7 @@
                 </div>
 
                 <!-- QQ/Discord 群聊上下文（仅 BUG/建议模式） -->
+
                 <template v-if="(c.platform === 'qq' || c.platform === 'discord') && fixedCategory">
                   <div class="expand-section">
                     <div class="expand-label">来源</div>
@@ -224,6 +225,19 @@
                     </div>
                   </div>
                 </template>
+
+                <!-- 采集到需求板 -->
+                <div class="expand-actions">
+                  <span v-if="collectedIds.has(c.id)" class="collected-badge">✅ 已安排需求</span>
+                  <button
+                    v-else
+                    class="btn-collect"
+                    :disabled="collectingId === c.id"
+                    @click.stop="collectRequirement(c)"
+                  >
+                    {{ collectingId === c.id ? '采集中…' : '📌 采集到需求板' }}
+                  </button>
+                </div>
               </div>
             </td>
           </tr>
@@ -264,12 +278,57 @@ const groupNames    = ref<Record<string, string>>({});
 const chatContext   = ref<Record<string, any>>({});
 const loadingChatCtx = ref<Set<string>>(new Set());
 
+// 需求板
+const collectedIds  = ref<Set<string>>(new Set());
+const collectingId  = ref<string | null>(null);
+
 async function loadGroupNames() {
   if (!gameStore.selectedGameId) return;
   try {
     const { data } = await api.get(`/crawlers/qq/group-names?game_id=${gameStore.selectedGameId}`);
     groupNames.value = data;
   } catch {}
+}
+
+async function loadCollectedIds() {
+  if (!gameStore.selectedGameId) return;
+  try {
+    const { data } = await api.get(`/requirements/collected-ids?game_id=${gameStore.selectedGameId}`);
+    collectedIds.value = new Set(data.source_ids as string[]);
+  } catch {}
+}
+
+async function collectRequirement(c: any) {
+  if (collectingId.value || collectedIds.value.has(c.id)) return;
+  collectingId.value = c.id;
+  try {
+    const sourceType = props.fixedCategory === 'bug' ? 'bug'
+      : props.fixedCategory === 'suggestion' ? 'suggestion'
+      : 'comment';
+    await api.post('/requirements', {
+      game_id: gameStore.selectedGameId,
+      source_type: sourceType,
+      source_id: c.id,
+      source_snapshot: {
+        content:      c.content,
+        author_name:  c.author_name,
+        platform:     c.platform,
+        category:     c.category,
+        sentiment:    c.sentiment,
+        summary:      c.summary,
+        published_at: c.published_at,
+        source_url:   c.source_url,
+      },
+    });
+    collectedIds.value = new Set([...collectedIds.value, c.id]);
+  } catch (e: any) {
+    if (e?.response?.status === 409) {
+      // 已采集过，标记为已采集
+      collectedIds.value = new Set([...collectedIds.value, c.id]);
+    }
+  } finally {
+    collectingId.value = null;
+  }
 }
 
 function formatMsgTime(t: string | null): string {
@@ -362,7 +421,7 @@ function categoryLabel(c: string | null) { return CATEGORY_MAP[c ?? ''] ?? (c ||
 function langLabel(l: string | null) { return LANG_MAP[l ?? ''] ?? (l || '—'); }
 
 // ─── Load ─────────────────────────────────────────────────────────────────────
-onMounted(() => { load(); loadGroupNames(); });
+onMounted(() => { load(); loadGroupNames(); loadCollectedIds(); });
 
 watch(() => props.fixedCategory, (val) => {
   category.value = val ?? '';
@@ -375,6 +434,7 @@ watch(() => gameStore.selectedGameId, () => {
   chatContext.value = {};
   loadWithCurrentFilters();
   loadGroupNames();
+  loadCollectedIds();
 });
 
 let searchTimer: ReturnType<typeof setTimeout>;
@@ -645,4 +705,32 @@ a { font-size: 12px; color: var(--accent); }
   cursor: pointer;
 }
 .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── 采集到需求板 ── */
+.expand-actions {
+  display: flex;
+  align-items: center;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+
+.btn-collect {
+  padding: 5px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-collect:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-collect:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.collected-badge {
+  font-size: 12px;
+  color: var(--success, #22c55e);
+  font-weight: 500;
+}
 </style>

@@ -40,6 +40,7 @@ from app.api.search import router as search_router
 from app.api.dashboard import router as dashboard_router
 from app.api.crawlers import router as crawlers_router
 from app.api.topics import router as topics_router
+from app.api.requirements import router as requirements_router
 
 app.include_router(auth_router)
 app.include_router(games_router)
@@ -48,6 +49,7 @@ app.include_router(search_router)
 app.include_router(dashboard_router)
 app.include_router(crawlers_router)
 app.include_router(topics_router)
+app.include_router(requirements_router)
 
 
 @app.get("/api/health")

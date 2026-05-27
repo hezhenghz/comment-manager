@@ -116,6 +116,20 @@ class QQTopic(Base):
     created_at:  Mapped[datetime]        = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class RequirementCard(Base):
+    __tablename__ = "requirement_cards"
+
+    id:               Mapped[uuid.UUID]  = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    game_id:          Mapped[uuid.UUID]  = mapped_column(UUID(as_uuid=True), ForeignKey("games.id"), nullable=False, index=True)
+    source_type:      Mapped[str]        = mapped_column(String(20), nullable=False)   # "comment" | "bug" | "suggestion" | "topic"
+    source_id:        Mapped[uuid.UUID]  = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    source_snapshot:  Mapped[dict]       = mapped_column(JSONB, default=dict)
+    requirement_text: Mapped[str]        = mapped_column(Text, default="")
+    status:           Mapped[str]        = mapped_column(String(20), default="todo")   # todo | in_progress | done
+    created_at:       Mapped[datetime]   = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at:       Mapped[datetime]   = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class CrawlJob(Base):
     __tablename__ = "crawl_jobs"
 

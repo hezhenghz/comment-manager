@@ -129,6 +129,34 @@ class WordCloudItem(BaseModel):
 
 
 # ── Alert ──
+# ── RequirementCard ──
+class RequirementCardCreate(BaseModel):
+    game_id: uuid.UUID
+    source_type: str              # "comment" | "bug" | "suggestion" | "topic"
+    source_id: uuid.UUID
+    source_snapshot: dict = {}
+
+
+class RequirementCardUpdate(BaseModel):
+    requirement_text: str | None = None
+    status: str | None = None     # "todo" | "in_progress" | "done"
+
+
+class RequirementCardOut(BaseModel):
+    id: uuid.UUID
+    game_id: uuid.UUID
+    source_type: str
+    source_id: uuid.UUID
+    source_snapshot: dict
+    requirement_text: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Alert ──
 class AlertRuleCreate(BaseModel):
     game_id: uuid.UUID
     rule_type: str = "keyword"       # keyword | threshold
