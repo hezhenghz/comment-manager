@@ -18,7 +18,7 @@ from app.models import ChatMessage, User
 from app.schemas.schemas import ChatMessageCreate, ChatMessageOut
 from app.api.auth import get_current_user
 
-router = APIRouter(prefix="/chat", tags=["chat"])
+router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
 @router.post("/messages", response_model=ChatMessageOut, status_code=201)
