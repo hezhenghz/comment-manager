@@ -188,8 +188,8 @@ class QQCrawler(BaseCrawler):
             ts_oldest = messages[-1].get("time", 0)
             logger.info(
                 f"[qq] 群 {group_id} 第{page_num}页: {len(messages)}条消息，"
-                f"时间 {datetime.fromtimestamp(ts_oldest) if ts_oldest else '?'} ~ "
-                f"{datetime.fromtimestamp(ts_newest) if ts_newest else '?'}，"
+                f"时间 {datetime.utcfromtimestamp(ts_oldest) if ts_oldest else '?'} ~ "
+                f"{datetime.utcfromtimestamp(ts_newest) if ts_newest else '?'}，"
                 f"message_seq={message_seq}"
             )
 
@@ -203,7 +203,9 @@ class QQCrawler(BaseCrawler):
                 seen_ids.add(mid)
 
                 ts = msg.get("time", 0)
-                published_at = datetime.fromtimestamp(ts) if ts else None
+                # QQ 的 time 是 Unix 时间戳；项目约定库内存 UTC naive datetime，
+                # 故用 utcfromtimestamp 而非 fromtimestamp（后者会带本地 +8 时区，导致显示晚 8 小时）
+                published_at = datetime.utcfromtimestamp(ts) if ts else None
 
                 # 降序迭代：遇到第一条 <= since 的消息，后续只会更老，安全 break
                 if since and published_at and published_at <= since:
