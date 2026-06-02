@@ -36,3 +36,28 @@ backend/.browser_profiles/
 
 # 运行日志
 backend.log
+
+# 构建临时文件（pgvector 编译、安装脚本、临时调试文件）
+build_*.bat
+build_*.ps1
+install_*.ps1
+setup_*.bat
+setup_*.ps1
+start-*.ps1
+dl_*.ps1
+enable_*.ps1
+*.zip
+*.exe
+pgvector_build/
+pgvector_build_log*
+nmake_*.txt
+build_final_*.txt
+cl_test.txt
+chat.txt
+STATUS.md
+bug_page.html
+init_db.bat
+start-backend.ps1
+start-napcat.ps1
+启动.bat
+comment-manager.code-workspace

@@ -14,6 +14,7 @@
       <router-link to="/topics">话题<span v-if="counts.topic" class="nav-count">（{{ counts.topic }}）</span></router-link>
       <router-link to="/requirements">需求板</router-link>
       <router-link to="/chat">群聊</router-link>
+      <router-link to="/bugreports">BUG上报</router-link>
       <router-link v-if="auth.user?.is_admin" to="/games">游戏管理</router-link>
     </nav>
     <div class="user" @click="logout">

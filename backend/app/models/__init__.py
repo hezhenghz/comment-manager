@@ -157,3 +157,26 @@ class CrawlJob(Base):
     phase:    Mapped[str | None] = mapped_column(String(20))        # "crawl" | "ai" | None
     ai_total: Mapped[int]        = mapped_column(Integer, default=0) # Phase2 需处理总数
     ai_done:  Mapped[int]        = mapped_column(Integer, default=0) # Phase2 已完成数
+
+
+class BugReport(Base):
+    """BUG上报（来自 ZenTao dump.om.dianhun.cn）"""
+    __tablename__ = "bug_reports"
+
+    id:           Mapped[uuid.UUID]    = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    external_id:  Mapped[str]          = mapped_column(String(50), unique=True, index=True)
+    title:        Mapped[str]          = mapped_column(String(500), nullable=False)
+    description:  Mapped[str | None]   = mapped_column(Text)
+    status:       Mapped[str | None]   = mapped_column(String(50), index=True)
+    priority:     Mapped[int | None]   = mapped_column(Integer)
+    severity:     Mapped[int | None]   = mapped_column(Integer)
+    module:       Mapped[str | None]   = mapped_column(String(200))
+    submitter:    Mapped[str | None]   = mapped_column(String(100))
+    assignee:     Mapped[str | None]   = mapped_column(String(100))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    resolved_at:  Mapped[datetime | None] = mapped_column(DateTime)
+    closed_at:    Mapped[datetime | None] = mapped_column(DateTime)
+    source_url:   Mapped[str | None]   = mapped_column(String(1024))
+    product:      Mapped[str]          = mapped_column(String(50), default="xkbb")
+    fetched_at:   Mapped[datetime]     = mapped_column(DateTime, default=datetime.utcnow)
+    raw_json:     Mapped[dict | None]  = mapped_column(JSONB)
