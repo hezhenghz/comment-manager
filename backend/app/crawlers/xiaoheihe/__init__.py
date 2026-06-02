@@ -260,7 +260,7 @@ async def _fetch_async(
                     continue
                 if since:
                     ts = item.get("create_at") or item.get("create_time") or item.get("created_at") or 0
-                    if ts and datetime.fromtimestamp(ts) < since:
+                    if ts and datetime.utcfromtimestamp(ts) < since:
                         hit_since = True
                         break
                 seen_ids.add(ext_id)
@@ -299,7 +299,9 @@ async def _fetch_async(
             break
 
         ts = item.get("create_at") or item.get("create_time") or item.get("created_at") or 0
-        published_at = datetime.fromtimestamp(ts) if ts else None
+        # 项目约定库内存 UTC naive datetime，故用 utcfromtimestamp
+        # （原 fromtimestamp 带本地 +8，导致前端再补 Z 后显示晚 8 小时）
+        published_at = datetime.utcfromtimestamp(ts) if ts else None
 
         if since and published_at and published_at < since:
             continue
