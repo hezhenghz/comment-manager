@@ -51,6 +51,14 @@ class Settings(BaseSettings):
     qq_access_token: str = ""      # access_token，留空则不带 Authorization 头
     qq_at_always_include: str = "" # 逗号分隔的 QQ 号，@ 任意一个则无条件入库，例：86114262,10001
 
+    # ZenTao BUG上报（dump.om.dianhun.cn）
+    zentao_url:           str = "http://dump.om.dianhun.cn"
+    zentao_username:      str = ""
+    zentao_password:      str = ""
+    zentao_product_id:    str = ""
+    zentao_cookie:        str = ""
+    zentao_sync_interval: int = 60   # 同步间隔（分钟）
+
     model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8"}
 
 

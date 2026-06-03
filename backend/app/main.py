@@ -44,6 +44,7 @@ from app.api.crawlers import router as crawlers_router
 from app.api.topics import router as topics_router
 from app.api.requirements import router as requirements_router
 from app.api.chat import router as chat_router
+from app.api.bugreports import router as bugreports_router
 
 app.include_router(auth_router)
 app.include_router(games_router)
@@ -54,6 +55,11 @@ app.include_router(crawlers_router)
 app.include_router(topics_router)
 app.include_router(requirements_router)
 app.include_router(chat_router)
+app.include_router(bugreports_router)
+
+# BUG上报 同步定时任务
+from app.crawlers.zentao.sync import start_bug_sync_scheduler
+start_bug_sync_scheduler()
 
 
 @app.get("/api/health")

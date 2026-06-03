@@ -1,0 +1,155 @@
+"""
+BUG上报 API 路由
+前缀：/api/bugreports
+
+GET  /api/bugreports             列表（分页 + 筛选）
+GET  /api/bugreports/stats       统计（按状态分组）
+GET  /api/bugreports/sync/status 同步状态（上次时间 + 是否进行中）
+POST /api/bugreports/sync        手动触发同步（仅管理员）
+"""
+
+import asyncio
+import uuid
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select, func, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.models import BugReport
+from app.auth import get_current_user
+from app.models import User
+
+router = APIRouter(prefix="/api/bugreports", tags=["bugreports"])
+
+# 优先级 / 严重程度 / 状态的中文标签
+PRIORITY_LABEL = {1: "紧急", 2: "重要", 3: "中", 4: "低"}
+SEVERITY_LABEL = {1: "严重", 2: "重要", 3: "中", 4: "低"}
+STATUS_LABEL   = {"active": "激活", "resolved": "已解决", "closed": "已关闭"}
+
+
+def _bug_to_dict(b: BugReport) -> dict:
+    return {
+        "id":           str(b.id),
+        "external_id":  b.external_id,
+        "title":        b.title,
+        "description":  b.description,
+        "status":       b.status,
+        "status_label": STATUS_LABEL.get(b.status or "", b.status or "—"),
+        "priority":     b.priority,
+        "priority_label": PRIORITY_LABEL.get(b.priority, "—") if b.priority else "—",
+        "severity":     b.severity,
+        "severity_label": SEVERITY_LABEL.get(b.severity, "—") if b.severity else "—",
+        "module":       b.module,
+        "submitter":    b.submitter,
+        "assignee":     b.assignee,
+        "submitted_at": b.submitted_at.isoformat() + "Z" if b.submitted_at else None,
+        "resolved_at":  b.resolved_at.isoformat() + "Z" if b.resolved_at else None,
+        "closed_at":    b.closed_at.isoformat() + "Z" if b.closed_at else None,
+        "source_url":   b.source_url,
+        "product":      b.product,
+        "fetched_at":   b.fetched_at.isoformat() + "Z" if b.fetched_at else None,
+    }
+
+
+@router.get("")
+async def list_bug_reports(
+    page:      int            = Query(1, ge=1),
+    per_page:  int            = Query(20, ge=1, le=100),
+    status:    Optional[str]  = Query(None),
+    priority:  Optional[int]  = Query(None),
+    severity:  Optional[int]  = Query(None),
+    submitter: Optional[str]  = Query(None),
+    keyword:   Optional[str]  = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    """返回 Bug 列表（分页 + 多维筛选）。"""
+    q = select(BugReport)
+
+    if status:
+        q = q.where(BugReport.status == status)
+    if priority is not None:
+        q = q.where(BugReport.priority == priority)
+    if severity is not None:
+        q = q.where(BugReport.severity == severity)
+    if submitter:
+        q = q.where(BugReport.submitter.ilike(f"%{submitter}%"))
+    if keyword:
+        q = q.where(BugReport.title.ilike(f"%{keyword}%"))
+
+    # 总数
+    count_q = select(func.count()).select_from(q.subquery())
+    total = (await db.execute(count_q)).scalar_one()
+
+    # 分页
+    q = q.order_by(desc(BugReport.submitted_at)).offset((page - 1) * per_page).limit(per_page)
+    rows = (await db.execute(q)).scalars().all()
+
+    return {
+        "total":    total,
+        "page":     page,
+        "per_page": per_page,
+        "items":    [_bug_to_dict(r) for r in rows],
+    }
+
+
+@router.get("/stats")
+async def bug_stats(
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    """按状态分组统计 Bug 数量，以及今日新增数量。"""
+    from datetime import datetime, date
+
+    # 按状态分组
+    rows = (await db.execute(
+        select(BugReport.status, func.count().label("cnt"))
+        .group_by(BugReport.status)
+    )).all()
+
+    by_status = {r.status or "unknown": r.cnt for r in rows}
+    total = sum(by_status.values())
+
+    # 今日新增（按 submitted_at 当天 — 即玩家上报当天）
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    today_new = (await db.execute(
+        select(func.count()).where(BugReport.submitted_at >= today_start)
+    )).scalar_one()
+
+    return {
+        "total":      total,
+        "active":     by_status.get("active", 0),
+        "resolved":   by_status.get("resolved", 0),
+        "closed":     by_status.get("closed", 0),
+        "today_new":  today_new,
+        "by_status":  by_status,
+    }
+
+
+@router.get("/sync/status")
+async def sync_status(
+    _current_user: User = Depends(get_current_user),
+):
+    """返回上次同步时间和当前同步状态。"""
+    from app.crawlers.zentao.sync import get_sync_status
+    return get_sync_status()
+
+
+@router.post("/sync")
+async def trigger_sync(
+    current_user: User = Depends(get_current_user),
+):
+    """手动触发 BUG 同步（仅管理员）。"""
+    if not current_user.is_admin:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="仅管理员可触发同步")
+
+    from app.crawlers.zentao.sync import sync_bug_reports, _is_syncing
+    if _is_syncing:
+        return {"status": "already_running", "message": "同步正在进行中"}
+
+    # 异步在后台执行，立即返回
+    asyncio.create_task(sync_bug_reports())
+    return {"status": "started", "message": "同步已开始"}

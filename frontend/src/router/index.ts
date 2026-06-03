@@ -16,6 +16,7 @@ const routes = [
       { path: 'topics', component: () => import('../components/topics/TopicList.vue') },
       { path: 'requirements', component: () => import('../components/requirements/RequirementsBoard.vue') },
       { path: 'chat', component: () => import('../components/chat/GameChat.vue') },
+      { path: 'bugreports', component: () => import('../components/bugreports/BugReportList.vue') },
     ],
   },
 ];
