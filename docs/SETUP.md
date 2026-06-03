@@ -85,11 +85,11 @@ pip install -r backend/requirements.txt
 
 脚本会自动：
 1. 检查并启动 Docker 数据库
-2. 用 **Windows Terminal** 打开三个标签页：`NapCat` / `Backend` / `Frontend`
+2. 用 **Windows Terminal** 打开四个标签页：`NapCat` / `Backend` / `Frontend` / `Monitor`
 
 **最小化** Windows Terminal 保持服务运行；**关闭**则停止所有服务。
 
-> **NapCat 首次或登录态过期**：在 NapCat 标签页里改手动运行 `napcat.bat` 扫码登录，之后重启即可恢复 `napcat.quick.bat` 静默模式。
+> **NapCat 已迁移到 Docker 运行**（小号 `3144134899 小阿月`），详见下方「NapCat（Docker 部署）」一节。`Monitor` 标签页每 60 秒探测一次 QQ 是否在线，掉线会红字提示并给出扫码地址。
 
 ### 4. 登录
 
@@ -105,8 +105,8 @@ pip install -r backend/requirements.txt
 # 数据库
 docker-compose up -d db
 
-# NapCat（QQ 群爬虫）
-Set-Location 'D:\Program Files\NapCat.44498.Shell'; .\napcat.quick.bat
+# NapCat（QQ 群爬虫，Docker 部署）
+docker compose -f D:\napcat-docker\docker-compose.yml up -d
 
 # 后端（在 backend 目录）
 ..\.venv\Scripts\uvicorn app.main:app --reload --port 8001 --host 0.0.0.0
@@ -114,6 +114,59 @@ Set-Location 'D:\Program Files\NapCat.44498.Shell'; .\napcat.quick.bat
 # 前端（在 frontend 目录）
 npm run dev
 ```
+
+---
+
+## NapCat（Docker 部署）
+
+QQ 群消息爬虫依赖 NapCat 提供 OneBot v11 HTTP API。**已从本机版迁移到 Docker 运行**，与本机大号 QQ 隔离，避免同机互踢掉线。
+
+### 基本信息
+
+| 项目 | 值 |
+|------|-----|
+| 运行方式 | Docker 容器（镜像 `mlikiowa/napcat-docker:latest`） |
+| 登录账号 | 小号 `3144134899 小阿月`（专号专用） |
+| 工作目录 | `D:\napcat-docker\` |
+| 编排文件 | `D:\napcat-docker\docker-compose.yml` |
+| OneBot HTTP API | `http://127.0.0.1:3000`（后端 `QQ_NAPCAT_URL` 连接此地址） |
+| WebUI 管理面板 | `http://127.0.0.1:6099/webui?token=napcat123456` |
+| 登录态持久化 | `D:\napcat-docker\QQ`（重启容器免扫码） |
+| 配置持久化 | `D:\napcat-docker\config`（含 OneBot HTTP 服务端配置） |
+| 自动重启 | `restart: always`（容器异常退出自动拉起） |
+| 快速登录 | compose 中 `ACCOUNT=3144134899`，重启自动恢复登录、不弹二维码 |
+
+> 后端通过 `.env` 的 `QQ_NAPCAT_URL=http://127.0.0.1:3000` 连接，迁移到 Docker 后**该配置无需改动**（端口对后端透明）。
+
+### 常用命令
+
+```powershell
+# 启动 / 重启
+docker compose -f D:\napcat-docker\docker-compose.yml up -d
+
+# 查看日志
+docker logs napcat --tail 40
+
+# 验证是否在线（返回 status: ok 即在线）
+Invoke-RestMethod -Uri http://127.0.0.1:3000/get_login_info -Method Post -ContentType 'application/json' -Body '{}'
+
+# 停止
+docker compose -f D:\napcat-docker\docker-compose.yml down
+```
+
+### 掉线处理（被风控踢下线 KickedOffLine）
+
+QQ 被服务器风控踢下线时，登录态作废，**无法自动重新登录**，必须人工重新扫码：
+
+1. 浏览器打开 `http://127.0.0.1:6099/webui?token=napcat123456`，用小号手机 QQ 扫码授权；
+2. 或从容器导出二维码图片再扫：
+   ```powershell
+   docker cp napcat:/app/napcat/cache/qrcode.png D:\napcat-docker\qrcode.png
+   ```
+
+`启动.bat` 的 `Monitor` 标签页每 60 秒探测一次，掉线会红字提示并给出上述扫码地址。
+
+> **降低被踢概率**：小号需「养号」——手机正常登录使用、完善资料、加好友进群、挂机期间不高频发消息。
 
 ---
 
@@ -268,6 +321,6 @@ docker-compose up -d db
 # 单独启动前端（在 frontend 目录）
 npm run dev
 
-# 单独启动 NapCat
-Set-Location 'D:\Program Files\NapCat.44498.Shell'; .\napcat.quick.bat
+# 单独启动 NapCat（Docker）
+docker compose -f D:\napcat-docker\docker-compose.yml up -d
 ```

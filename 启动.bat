@@ -41,17 +41,19 @@ if %errorlevel% neq 0 (
 
 :: Launch all services in one Windows Terminal window (3 tabs)
 echo  [2/4] Opening Windows Terminal...
-wt new-tab --title "NapCat" powershell -ExecutionPolicy Bypass -NoExit -File "%ROOT%\start-napcat.ps1" ^; new-tab --title "Backend" --startingDirectory "%ROOT%" powershell -ExecutionPolicy Bypass -NoExit -File "%ROOT%\start-backend.ps1" ^; new-tab --title "Frontend" --startingDirectory "%ROOT%\frontend" cmd /k "timeout /t 5 /nobreak >nul & npm run dev"
+wt new-tab --title "NapCat" powershell -ExecutionPolicy Bypass -NoExit -File "%ROOT%\start-napcat.ps1" ^; new-tab --title "Backend" --startingDirectory "%ROOT%" powershell -ExecutionPolicy Bypass -NoExit -File "%ROOT%\start-backend.ps1" ^; new-tab --title "Frontend" --startingDirectory "%ROOT%\frontend" cmd /k "timeout /t 5 /nobreak >nul & npm run dev" ^; new-tab --title "Monitor" powershell -ExecutionPolicy Bypass -NoExit -File "%ROOT%\monitor-napcat.ps1"
 goto :show_urls
 
 :fallback
-echo  [2/4] Starting NapCat...
-start "NapCat" cmd /k "cd /d "D:\Program Files\NapCat.44498.Shell" && napcat.quick.bat"
+echo  [2/4] Starting NapCat (Docker)...
+start "NapCat" powershell -ExecutionPolicy Bypass -NoExit -File "%ROOT%\start-napcat.ps1"
 echo  [3/4] Starting backend...
 start "Backend" powershell -ExecutionPolicy Bypass -NoExit -File "%ROOT%\start-backend.ps1"
 timeout /t 4 /nobreak > nul
 echo  [4/4] Starting frontend...
 start "Frontend" cmd /k "cd /d "%ROOT%\frontend" && npm run dev"
+echo         Starting NapCat monitor...
+start "Monitor" powershell -ExecutionPolicy Bypass -NoExit -File "%ROOT%\monitor-napcat.ps1"
 
 :show_urls
 for /f %%I in ('powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | Sort-Object PrefixLength | Select-Object -First 1).IPAddress"') do set LAN_IP=%%I
