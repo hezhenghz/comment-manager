@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     zentao_cookie:        str = ""
     zentao_sync_interval: int = 60   # 同步间隔（分钟）
 
+    # BUG上报 异地推送端点的鉴权 Token
+    # 若设置，则启用 POST /api/bugreports/_push（接收外部爬虫推送）
+    # 远程主机：设置此 Token 用于鉴权；本地爬虫：用同一 Token 推送
+    bug_push_token:       str = ""
+
     model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8"}
 
 

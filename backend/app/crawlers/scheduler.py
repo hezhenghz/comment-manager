@@ -396,6 +396,27 @@ def start_scheduler() -> None:
     logger.info(f"[scheduler] 已启动，间隔={settings.crawler_interval_minutes}min")
 
 
+async def cleanup_orphan_jobs() -> None:
+    """清理上次进程残留的 running 状态 CrawlJob（标记为失败）。"""
+    try:
+        from app.database import async_session
+        from app.models import CrawlJob
+        from sqlalchemy import select, update
+        from datetime import datetime
+        async with async_session() as db:
+            result = await db.execute(
+                update(CrawlJob)
+                .where(CrawlJob.status == "running")
+                .values(status="failed", finished_at=datetime.utcnow(),
+                        error_msg="进程重启，任务未完成")
+            )
+            await db.commit()
+            if result.rowcount:
+                logger.info(f"[scheduler] 清理 {result.rowcount} 个残留 running 任务")
+    except Exception as e:
+        logger.warning(f"[scheduler] cleanup_orphan_jobs 失败: {e}")
+
+
 def _get_platform_app_id(game, platform: str) -> str | None:
     """根据平台返回该游戏对应的平台 ID。"""
     if platform in ("steam_store", "steam_hub", "xiaoheihe"):

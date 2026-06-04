@@ -5,17 +5,22 @@ BUG上报 API 路由
 GET  /api/bugreports             列表（分页 + 筛选）
 GET  /api/bugreports/stats       统计（按状态分组）
 GET  /api/bugreports/sync/status 同步状态（上次时间 + 是否进行中）
-POST /api/bugreports/sync        手动触发同步（仅管理员）
+POST /api/bugreports/sync        手动触发同步（仅管理员，使用本地 ZenTao 凭据）
+POST /api/bugreports/_push       接收外部推送（用于异地爬虫架构，Token 鉴权）
 """
 
 import asyncio
+import os
 import uuid
+from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.database import get_db
 from app.models import BugReport
 from app.auth import get_current_user
@@ -141,7 +146,7 @@ async def sync_status(
 async def trigger_sync(
     current_user: User = Depends(get_current_user),
 ):
-    """手动触发 BUG 同步（仅管理员）。"""
+    """手动触发 BUG 同步（仅管理员，使用本地 ZenTao 凭据）。"""
     if not current_user.is_admin:
         from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="仅管理员可触发同步")
@@ -153,3 +158,84 @@ async def trigger_sync(
     # 异步在后台执行，立即返回
     asyncio.create_task(sync_bug_reports())
     return {"status": "started", "message": "同步已开始"}
+
+
+# ─── 外部推送端点（异地爬虫架构） ───────────────────────────────────────────
+
+class BugReportPushItem(BaseModel):
+    external_id:  str
+    title:        str
+    description:  Optional[str] = None
+    status:       Optional[str] = "active"
+    priority:     Optional[int] = None
+    severity:     Optional[int] = None
+    module:       Optional[str] = None
+    submitter:    Optional[str] = None
+    assignee:     Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    resolved_at:  Optional[datetime] = None
+    closed_at:    Optional[datetime] = None
+    source_url:   Optional[str] = None
+    product:      Optional[str] = "xkbb"
+    raw_json:     Optional[dict] = None
+
+
+class BugReportPushPayload(BaseModel):
+    items: list[BugReportPushItem]
+
+
+@router.post("/_push")
+async def push_bug_reports(
+    payload: BugReportPushPayload,
+    x_push_token: Optional[str] = Header(None, alias="X-Push-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    接收外部爬虫推送的 BUG 数据（异地爬虫架构）。
+    远程主机不爬数据，由本地机器跑 Playwright 爬完后 POST 推送过来。
+
+    鉴权：Header `X-Push-Token` 必须等于 .env 中的 BUG_PUSH_TOKEN。
+    去重：按 external_id 跳过已存在的记录。
+    """
+    settings = get_settings()
+    expected = getattr(settings, "bug_push_token", "") or os.environ.get("BUG_PUSH_TOKEN", "")
+
+    if not expected:
+        raise HTTPException(status_code=503, detail="BUG_PUSH_TOKEN 未配置，推送端点未启用")
+
+    if x_push_token != expected:
+        raise HTTPException(status_code=401, detail="Token 无效")
+
+    new_count = 0
+    skipped = 0
+    for item in payload.items:
+        existing = (await db.execute(
+            select(BugReport.id).where(BugReport.external_id == item.external_id)
+        )).scalar_one_or_none()
+
+        if existing is not None:
+            skipped += 1
+            continue
+
+        db.add(BugReport(
+            external_id  = item.external_id,
+            title        = item.title,
+            description  = item.description,
+            status       = item.status or "active",
+            priority     = item.priority,
+            severity     = item.severity,
+            module       = item.module,
+            submitter    = item.submitter,
+            assignee     = item.assignee,
+            submitted_at = item.submitted_at,
+            resolved_at  = item.resolved_at,
+            closed_at    = item.closed_at,
+            source_url   = item.source_url,
+            product      = item.product or "xkbb",
+            fetched_at   = datetime.utcnow(),
+            raw_json     = item.raw_json,
+        ))
+        new_count += 1
+
+    await db.commit()
+    return {"received": len(payload.items), "new": new_count, "skipped": skipped}
