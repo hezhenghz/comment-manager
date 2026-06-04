@@ -15,8 +15,20 @@
       <router-link to="/requirements">需求板</router-link>
       <router-link to="/chat">群聊</router-link>
       <router-link to="/bugreports">BUG上报</router-link>
+      <router-link to="/lineup">阵容分析</router-link>
       <router-link v-if="auth.user?.is_admin" to="/games">游戏管理</router-link>
     </nav>
+    <div class="theme-switcher">
+      <button
+        v-for="t in themeStore.THEMES"
+        :key="t.key"
+        class="theme-dot"
+        :class="{ active: themeStore.current === t.key }"
+        :style="{ background: t.dot }"
+        :title="t.name"
+        @click="themeStore.setTheme(t.key)"
+      />
+    </div>
     <div class="user" @click="logout">
       <span class="user-name">{{ auth.user?.display_name || auth.user?.username }}</span>
       <span class="user-logout">退出登录</span>
@@ -29,11 +41,13 @@ import { ref, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth';
 import { useGameStore } from '../../stores/game';
+import { useThemeStore } from '../../stores/theme';
 import api from '../../api';
 
 const router = useRouter();
 const auth = useAuthStore();
 const gameStore = useGameStore();
+const themeStore = useThemeStore();
 const counts = ref({ total: 0, bug: 0, suggestion: 0, topic: 0 });
 
 onMounted(async () => {
@@ -126,6 +140,35 @@ nav a.router-link-active {
   color: var(--text-primary);
   background: var(--bg-hover);
   border-left-color: var(--accent);
+}
+
+.theme-switcher {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.theme-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: transform 0.15s, outline-color 0.15s;
+}
+
+.theme-dot:hover {
+  transform: scale(1.15);
+}
+
+.theme-dot.active {
+  outline-color: var(--text-primary);
+  transform: scale(1.15);
 }
 
 .user {

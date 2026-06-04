@@ -1,6 +1,6 @@
 # Comment Manager — 产品文档
 
-> 最后更新：2026-05-21
+> 最后更新：2026-06-04
 
 ---
 
@@ -54,6 +54,10 @@
 | 评论 | 全部评论列表 + 搜索筛选 | 所有用户 |
 | BUG | 仅展示 category=bug 的评论 | 所有用户 |
 | 建议 | 仅展示 category=suggestion 的评论 | 所有用户 |
+| 话题 | QQ / Discord 群聊话题聚合（AI 自动提取） | 所有用户 |
+| 需求板 | 从评论/BUG/建议/话题采集的需求看板（敏捷故事板） | 所有用户 |
+| 群聊 | 同一游戏下登录用户的团队聊天室 | 所有用户 |
+| 阵容分析 | 阵容数据看板 | 所有用户 |
 | 游戏管理 | 游戏 CRUD + 爬虫触发 + 停用词配置 | 仅管理员 |
 
 侧边栏顶部有游戏切换下拉框，所有数据视图均跟随所选游戏过滤。底部显示当前登录用户名 + 退出登录。
@@ -116,6 +120,97 @@
 |------|---------------|---------|
 | Steam | 1 = 推荐 / 0 = 不推荐 | 👍推荐 / 👎不推荐 |
 | 小黑盒 | 1–5 星级评分 | ⭐N（≥4 绿色，≤2 红色） |
+
+---
+
+## 六·一、话题聚合
+
+QQ / Discord 群聊消息按对话聚类成"话题"，由 AI 自动提取标题、摘要、分类、情感。
+
+- 数据表：`qq_topics`（含 QQ 和 Discord 两种平台，`platform` 字段区分）
+- 列表展示：标题、平台徽章（QQ 绿 / Discord 紫）、所属群/频道、分类、情感、时间范围、消息条数
+- 行点击展开 → 拉取该话题关联的原始消息列表
+- "重新聚合话题"按钮：手动触发 AI 重新聚类（约 30 秒）
+- 每条话题可"📌 采集"到需求板
+
+---
+
+## 六·二、需求板（敏捷故事板）
+
+从 评论 / BUG / 建议 / 话题 四类来源采集的需求，以便利贴卡片形式管理，模仿敏捷开发故事板。
+
+- **采集入口**：评论/BUG/建议在展开行底部有"📌 采集到需求板"按钮；话题在话题行内有"📌 采集"按钮。已采集显示"✅ 已安排需求"。
+- **三栏看板**：未开始（todo）/ 进行中（in_progress）/ 已完成（done），按状态分列
+- **顶部筛选**：全部 / 评论 / BUG / 建议 / 话题
+- **卡片字段**：
+  1. **玩家原始内容**：展开后懒加载来源上下文（QQ/Discord 聊天前后文，或话题原始消息）
+  2. **需求描述**：可编辑文本框，默认由 AI 生成——方案/开发者视角，可直接作为 Claude Code 输入（非文字润色）
+  3. **状态**：下拉选择，乐观更新
+- **快照机制**：采集时把来源内容存入 `source_snapshot`（JSONB），来源被删除也不影响卡片
+- **去重**：同一来源重复采集返回 409，前端标记为已采集
+- AI 需求生成模型：`dianhun/claude-sonnet-4-6`（主 Provider）
+
+---
+
+## 六·三、群聊
+
+同一游戏下的不同登录用户实时沟通的团队聊天室，每个游戏独立。
+
+- 方案：HTTP 短轮询（每 3 秒），不使用 WebSocket
+- 数据表：`chat_messages`
+- 发送：Enter 发送、Shift+Enter 换行；乐观更新（消息立即出现，失败回滚并恢复输入）
+- 气泡：自己的消息靠右蓝色，他人靠左灰色，显示发送者名称 + 时间
+- 拉取：初始加载最近 50 条；之后按最后一条 `created_at` 增量轮询
+- 切换游戏时清空并重置轮询；离开页面停止轮询
+
+---
+
+## 六·四、阵容分析（《侠客2》物品选用率）
+
+独立模块，从游戏 API 拉取玩家"离线大码"（Base64 编码的对局阵容数据），解析后统计各门派/段位下的物品选用率并可视化。与评论业务无关。
+
+### 6.4.1 数据采集
+
+- **来源**：游戏接口 `gateway-client.17m3.com`，遍历 10 门派 × 10 段位 × 3 失败回合区间 = 300 次请求/轮，每次最多 50 条大码。
+- **解析**：手写 protobuf 解析大码，提取玩家名、门派、段位、失败回合、**回合数**、各物品累计出现次数（`item_counts`）。一条大码 = 一局 = 一条 `lineup_snapshots`。
+- **去重**：大码内容 sha1（`code_hash`），重复只刷新 `last_seen_at`。
+- **定时拉取**：默认每 1 小时一轮（可在页面开关/调间隔）。每轮结束自动清理 `last_seen_at` 超 7 天的陈旧快照。
+- **物品元数据**：从 `ItemCfg.bytes` + `LocalizeTable.bytes` 解析物品中文名、类型（招式/内功/武器/配饰/侠客…）、品质（rank 1~5）、是否职业物品，进程内缓存。
+
+### 6.4.2 统计口径
+
+- **使用率%** = 物品累计出现次数 ÷ 总回合数 × 100（不去重，可 >100%，含义为"平均每回合出现 N 次"）。总回合数 = 当前筛选范围内所有快照 `round_count` 之和。
+- **系列折叠**：同一物品的不同等级合并为一个"系列"统计（野球拳系列、修罗印系列、巡捕令系列）。系列 rank 取成员最高、任一成员职业则系列算职业。维护表见 `lineup/series.py`。
+- **顶部统计卡**：总局数、总回合数、覆盖门派、当前筛选样本。
+- **筛选**：门派 / 段位 / 显示数量 / 仅职业物品，多数图表跟随联动。
+
+### 6.4.3 可视化模块（页面自上而下）
+
+| 模块 | 说明 |
+|------|------|
+| 物品使用率柱状图 | 横向柱，Top N；物品名按品质着色，职业物品名带 ★，柱长按次数，标签显示「次数（百分比%）」 |
+| 职业物品占比饼图 | 独立拉取（不依赖"仅职业物品"勾选），扇区为职业物品 |
+| 各门派样本分布 | 竖向柱，各门派快照数量 |
+| 按类型分组 Top/Last | 每个有数据的物品类型一行，左 Top20 / 右 Last20；空类型整行隐藏 |
+| 各门派职业物品占比 | 5×2 网格，每格一个门派的职业物品饼图，前 3 名在扇区旁标名 |
+| 选用失衡度 | 见下 |
+
+### 6.4.4 选用失衡度分析（统计学方法）
+
+评估"物品选用率低到什么程度算失衡"，采用两个标准统计指标：
+
+- **基尼系数**：衡量某类型内部选用集中度（0=均衡，1=极端集中）。等级：<0.4 均衡（绿）/ 0.4~0.6 中度（橙）/ ≥0.6 严重（红）。
+- **相对公平份额法**：某类型 N 个物品，公平份额 = 1/N；物品份额 < 公平份额×25% = 偏冷，< 10% = 严重偏冷。自适应物品数量。
+
+模块分两部分：
+1. **按类型失衡**：每类型一行，基尼系数 + 严重偏冷/偏冷数（严重偏冷后括号列出物品名），可展开看偏冷清单。
+2. **职业物品前3失衡**：每门派只统计选用最高的前 3 个职业物品（其余为跨门派抓取的杂质），固定对比 10 门派，按前3基尼排序。
+
+- **排除名单**：BOSS 掉落等稀缺物品（用得少是因为掉得少，非被冷落）不计入失衡统计，维护表见 `lineup/exclusions.py`。仅影响失衡统计，不影响使用率图表。失衡模块顶部只读展示已排除物品。
+
+### 6.4.5 性能
+
+聚合端点（usage / usage-by-type / stats / 失衡）加内存缓存，用「数据指纹 =（快照行数, max(last_seen_at)）」做失效信号。数据未变时切页签命中缓存（毫秒级）；拉取/清理改变指纹自动失效重算。
 
 ---
 
@@ -199,6 +294,74 @@ Comment
   translation     TEXT NULLABLE
   thumbs_up       INT NULLABLE   -- Steam: 1=推荐/0=不推荐；小黑盒: 1-5 星
   thumbs_down     INT NULLABLE   -- Steam 专用
+  bug_status         VARCHAR NULLABLE  -- NULL=未处理 | accepted=已接受 | completed=已完成
+  -- AI 分析状态机（爬取与分析解耦）
+  ai_status          VARCHAR DEFAULT 'pending'  -- pending | done | failed | skipped
+  ai_retry_count     INT DEFAULT 0
+  next_ai_attempt_at DATETIME NULLABLE   -- 指数退避调度时间
+  last_ai_error      TEXT NULLABLE
+  is_game_feedback   BOOLEAN NULLABLE    -- Discord 过滤器：是否游戏反馈
+
+QQTopic
+  id          UUID PK
+  game_id     UUID FK
+  title       VARCHAR
+  summary     TEXT
+  category    VARCHAR NULLABLE
+  sentiment   VARCHAR NULLABLE
+  group_id    VARCHAR NULLABLE   -- QQ group_id 或 Discord channel_id
+  platform    VARCHAR NULLABLE   -- qq | discord | NULL(旧数据)
+  comment_ids UUID[]             -- 关联的 Comment id 列表
+  started_at  DATETIME NULLABLE
+  ended_at    DATETIME NULLABLE
+  created_at  DATETIME
+
+RequirementCard
+  id               UUID PK
+  game_id          UUID FK
+  source_type      VARCHAR   -- comment | bug | suggestion | topic
+  source_id        UUID      -- 来源记录 id
+  source_snapshot  JSONB     -- 采集时的内容快照
+  requirement_text TEXT      -- AI 生成的需求描述（可编辑）
+  status           VARCHAR DEFAULT 'todo'  -- todo | in_progress | done
+  created_at       DATETIME
+  updated_at       DATETIME
+
+ChatMessage
+  id           UUID PK
+  game_id      UUID FK
+  user_id      UUID FK
+  display_name VARCHAR   -- 发送时的用户名快照
+  content      TEXT
+  created_at   DATETIME  -- 与 game_id 组成复合索引
+
+LineupSnapshot                  -- 阵容分析：一条大码 = 一局玩家阵容
+  id            UUID PK
+  code_hash     VARCHAR UNIQUE  -- 大码 sha1，去重键
+  raw_code      TEXT            -- 大码 base64 原文
+  player_name   VARCHAR NULLABLE
+  men_pai       INT INDEX       -- 门派枚举 2~11
+  rank_level    INT INDEX       -- 段位 1~10
+  fail_round    INT NULLABLE
+  round_count   INT DEFAULT 0   -- 该局回合数
+  item_counts   JSONB           -- { "itemId": 累计出现次数 }
+  first_seen_at DATETIME
+  last_seen_at  DATETIME        -- 清理依据（超 7 天删除）
+
+LineupFetchJob                  -- 阵容拉取任务状态
+  id          UUID PK
+  status      VARCHAR    -- running | done | failed
+  req_total   INT DEFAULT 0   -- 计划请求数（300）
+  req_done    INT DEFAULT 0
+  new_count   INT DEFAULT 0
+  started_at  DATETIME
+  finished_at DATETIME NULLABLE
+  error_msg   TEXT NULLABLE
+
+LineupScheduleConfig            -- 阵容自动拉取配置（开关 / 间隔）
+  id             UUID PK
+  enabled        BOOLEAN
+  interval_hours INT
 
 User
   id            UUID PK
@@ -232,6 +395,11 @@ CrawlJob
 /api/comments          — 评论列表 + 筛选
 /api/dashboard         — 统计 / 分类 / 来源
 /api/crawlers          — 手动触发 + 状态查询
+/api/topics            — 话题聚合列表 / 重新聚合
+/api/requirements      — 需求板卡片 CRUD
+/api/chat              — 群聊消息收发（短轮询）
+/api/bugreports        — BUG 上报（禅道同步）
+/api/lineup            — 阵容分析：拉取 / 调度 / 使用率 / 按类型 / 失衡度等
 ```
 
 ---

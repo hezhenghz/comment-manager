@@ -71,6 +71,10 @@ class CommentOut(BaseModel):
     thumbs_up: int | None = None
     # BUG 处理状态：None=未处理, accepted=已接受, completed=已完成
     bug_status: str | None = None
+    # AI 分析状态：pending=待分析 / done=已分析 / failed=分析失败 / skipped=非游戏反馈
+    ai_status: str | None = None
+    # AI 最近一次失败原因（仅在 ai_status='failed' 时有意义；用于前端 tooltip 排查）
+    last_ai_error: str | None = None
 
     model_config = {"from_attributes": True}
 

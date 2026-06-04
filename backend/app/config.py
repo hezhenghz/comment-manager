@@ -36,6 +36,16 @@ class Settings(BaseSettings):
 
     # Crawler
     crawler_interval_minutes: int = 120
+    # 并发锁 TTL（秒）：_running 字典里超过该时间的锁视为残留自动释放。
+    # 解耦后 crawl 阶段不会再被 AI 拖死，正常 crawl 几秒~几分钟内完成；
+    # TTL 用于兜底真·crawl 卡死（如 Discord API 挂、网络断），防止前端永远点不动按钮。
+    crawler_lock_ttl_seconds: int = 1800
+
+    # AI Worker（解耦后的独立后台任务）
+    ai_worker_interval_minutes: int = 5          # APScheduler 触发间隔
+    ai_worker_batch_size: int = 50               # 单次最多处理多少条 pending
+    ai_max_retries: int = 3                      # 超过即标 ai_status='failed'
+    ai_retry_backoff_base_seconds: int = 300     # 指数退避基数：300 → 600 → 1200
 
     # Proxy（用于访问 Steam 等被墙的接口，留空则不使用）
     steam_proxy: str = ""
@@ -58,6 +68,19 @@ class Settings(BaseSettings):
     zentao_product_id:    str = ""
     zentao_cookie:        str = ""
     zentao_sync_interval: int = 60   # 同步间隔（分钟）
+
+    # ── 阵容物品使用率分析模块 ──────────────────────────────────────────
+    lineup_api_base: str = "https://gateway-client.17m3.com/NHSmV"  # 离线玩家数据接口
+    lineup_uniq_id: str = "87fc14b1"        # 接口固定标识（写死在游戏里）
+    lineup_area_id: str = "1001"            # 区服 ID
+    lineup_count: int = 50                  # 单次请求条数（接口上限 50）
+    lineup_interval_hours: int = 1          # 定时拉取间隔（小时）
+    lineup_retention_days: int = 7          # 快照保留天数：last_seen_at 超过此天数即清理
+    lineup_request_delay_ms: int = 200      # 每次请求之间的节流延时（毫秒）
+    # ItemCfg.bytes 路径（itemId→NameKey/职业物品标志/价格的数据源）
+    lineup_itemcfg_path: str = r"F:\xiake2\trunk\Client\XiaKe2_U3DProj\Assets\PackRes\TableData\ItemCfg.bytes"
+    # LocalizeTable.bytes 路径（NameKey→中文名）
+    lineup_localize_path: str = r"F:\xiake2\trunk\Client\XiaKe2_U3DProj\Assets\PackRes\TableData\LocalizeTable.bytes"
 
     model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8"}
 

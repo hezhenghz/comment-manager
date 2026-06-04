@@ -16,10 +16,18 @@ async def lifespan(app: FastAPI):
     # Startup: create tables if not exists (dev convenience)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # 清理上次进程残留的幽灵 running job，再启动调度器
+    # 清理上次进程残留的幽灵 running job，再启动调度器与 AI worker
     from app.crawlers.scheduler import start_scheduler, cleanup_orphan_jobs
+    from app.ai.worker import start_ai_worker
+    from app.database import async_session
+    from app.lineup.schedule import get_or_create_config
     await cleanup_orphan_jobs()
-    start_scheduler()
+    # 读取阵容自动拉取配置（持久化在 DB），按配置注册定时任务
+    async with async_session() as db:
+        cfg = await get_or_create_config(db)
+        lineup_enabled, lineup_interval = cfg.enabled, cfg.interval_hours
+    start_scheduler(lineup_enabled=lineup_enabled, lineup_interval_hours=lineup_interval)
+    start_ai_worker()
     yield
     await engine.dispose()
 
@@ -45,6 +53,7 @@ from app.api.topics import router as topics_router
 from app.api.requirements import router as requirements_router
 from app.api.chat import router as chat_router
 from app.api.bugreports import router as bugreports_router
+from app.api.lineup import router as lineup_router
 
 app.include_router(auth_router)
 app.include_router(games_router)
@@ -56,6 +65,7 @@ app.include_router(topics_router)
 app.include_router(requirements_router)
 app.include_router(chat_router)
 app.include_router(bugreports_router)
+app.include_router(lineup_router)
 
 # BUG上报 同步定时任务
 from app.crawlers.zentao.sync import start_bug_sync_scheduler
