@@ -1,10 +1,15 @@
+import os
+import sys
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
+# 让 alembic.exe 也能找到 backend/app 包：把 backend/ 目录塞进 sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Models must be imported before Base.metadata
 from app.database import Base
-from app.models import Game, Comment, User, AlertRule, ReportTask
+from app.models import Game, Comment, User, AlertRule  # noqa: F401
 from app.config import get_settings
 
 config = context.config

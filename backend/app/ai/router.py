@@ -12,7 +12,7 @@ _COOLDOWN_SECONDS  = 120  # 熔断后暂停多少秒
 class AIRouter:
     def __init__(self):
         s = get_settings()
-        self.chat_primary = DeepSeekProvider(timeout=10.0)
+        self.chat_primary = DeepSeekProvider(timeout=30.0)
         self.chat_backup = (
             DeepSeekProvider(
                 api_key=s.ai_chat_backup_api_key,

@@ -36,6 +36,12 @@ backend/.browser_profiles/
 
 # 运行日志
 backend.log
+_backend_err.log
+_backend_out.log
+_fe_out.log
+
+# 临时调试脚本
+backend/test_primary_ai.py
 
 # 构建临时文件（pgvector 编译、安装脚本、临时调试文件）
 build_*.bat

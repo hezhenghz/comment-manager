@@ -47,13 +47,10 @@ class DiscordCrawler(BaseCrawler):
                 logger.info(f"[discord] 频道 {cid} 原始消息 {len(raw)} 条")
         candidates = [self._parse_message(m, c, g) for m, c, g in all_raw]
         candidates = [fc for fc in candidates if fc is not None]
-        if not candidates:
-            return []
-        from app.ai.discord_filter import filter_game_feedback
-        flags = await filter_game_feedback([fc.content for fc in candidates])
-        results = [fc for fc, keep in zip(candidates, flags) if keep]
-        logger.info(f"[discord] AI 过滤保留 {len(results)}/{len(candidates)} 条")
-        return results[:limit] if limit else results
+        # 解耦后：所有原始消息直接入库（is_game_feedback=NULL），
+        # AI 过滤判定由 worker 在 run_pipeline 里单条做，AI 挂掉不再阻塞爬取。
+        logger.info(f"[discord] 原始候选 {len(candidates)} 条（AI 过滤已移到 worker）")
+        return candidates[:limit] if limit else candidates
 
     async def validate(self, game_app_id):
         token = get_settings().discord_bot_token

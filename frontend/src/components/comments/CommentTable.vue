@@ -101,8 +101,11 @@
             <td class="content-cell">
               {{ c.content.slice(0, 150) }}{{ c.content.length > 150 ? '…' : '' }}
             </td>
-            <td>
-              <span class="sentiment" :class="c.sentiment || 'neutral'">
+            <td @click.stop="c.ai_status === 'failed' ? retryAi(c) : null">
+              <span v-if="c.ai_status === 'pending'" class="ai-badge ai-pending" title="等待 AI 分析中">⏳ 待分析</span>
+              <span v-else-if="c.ai_status === 'failed'" class="ai-badge ai-failed" :title="c.last_ai_error || '点此重置为待分析状态'">⚠ AI 分析失败，点此重试</span>
+              <span v-else-if="c.ai_status === 'skipped'" class="ai-badge ai-skipped" title="AI 判定为非游戏反馈（水群/广告/图片等）">— 已跳过</span>
+              <span v-else class="sentiment" :class="c.sentiment || 'neutral'">
                 {{ sentimentLabel(c.sentiment) }}
               </span>
             </td>
@@ -376,6 +379,15 @@ function bugStatusRowClass(c: any): string {
   return '';
 }
 
+// ─── AI 重试 ─────────────────────────────────────────────────────────────────
+async function retryAi(c: any) {
+  if (c.ai_status !== 'failed') return;
+  try {
+    await api.post(`/comments/${c.id}/ai-retry`);
+    c.ai_status = 'pending';
+  } catch {}
+}
+
 async function onBugStatusChange(c: any, newStatus: string) {
   const prev = c.bug_status;
   // 乐观更新
@@ -600,6 +612,20 @@ td {
 .sentiment.positive { color: var(--positive); }
 .sentiment.negative { color: var(--negative); }
 .sentiment.neutral  { color: var(--neutral); }
+
+/* ── AI 状态角标 ── */
+.ai-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.ai-pending { background: rgba(107, 114, 128, 0.18); color: var(--text-secondary); }
+.ai-failed  { background: rgba(239, 68, 68, 0.15); color: #f87171; cursor: pointer; }
+.ai-failed:hover { background: rgba(239, 68, 68, 0.25); }
+.ai-skipped { background: rgba(107, 114, 128, 0.10); color: var(--text-muted); }
 
 /* ── Rating ── */
 .rating { font-size: 12px; white-space: nowrap; }

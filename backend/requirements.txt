@@ -19,6 +19,7 @@ playwright==1.49.0
 
 # AI Clients
 openai==1.58.1
+json-repair==0.59.10
 
 # Language Detection
 langdetect==1.0.9

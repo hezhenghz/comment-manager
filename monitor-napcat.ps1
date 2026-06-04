@@ -1,7 +1,9 @@
 ﻿# NapCat (Docker) 在线监控 —— 每 60 秒探测一次小号是否在线
-# 判断依据：调用 OneBot HTTP API /get_login_info，返回 ok=在线，超时/报错=掉线
+# 判断依据：调用 OneBot HTTP API /get_status，看 data.online 是否为 true（被踢下线时为 false）
+# 注意：不能用 /get_login_info 判断，它只返回本地缓存的账号信息，进程活着就永远返回 ok
 $ErrorActionPreference = 'SilentlyContinue'
-$api = 'http://127.0.0.1:3000/get_login_info'
+$api     = 'http://127.0.0.1:3000/get_login_info'  # 仅用于取昵称
+$statApi = 'http://127.0.0.1:3000/get_status'       # 判断真实在线状态
 $webui = 'http://127.0.0.1:6099/webui?token=napcat123456'
 
 Write-Host '============================================' -ForegroundColor Cyan
@@ -15,8 +17,12 @@ while ($true) {
     $online = $false
     $nick = ''
     try {
-        $r = Invoke-RestMethod -Uri $api -Method Post -ContentType 'application/json' -Body '{}' -TimeoutSec 8
-        if ($r.status -eq 'ok') { $online = $true; $nick = "$($r.data.nickname) ($($r.data.user_id))" }
+        $s = Invoke-RestMethod -Uri $statApi -Method Post -ContentType 'application/json' -Body '{}' -TimeoutSec 8
+        if ($s.status -eq 'ok' -and $s.data.online -eq $true) {
+            $online = $true
+            $r = Invoke-RestMethod -Uri $api -Method Post -ContentType 'application/json' -Body '{}' -TimeoutSec 8
+            $nick = "$($r.data.nickname) ($($r.data.user_id))"
+        }
     } catch { }
 
     if ($online) {

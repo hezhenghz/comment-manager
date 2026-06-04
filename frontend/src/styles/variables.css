@@ -20,6 +20,54 @@
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+/* 暗 · Steam */
+[data-theme="steam"] {
+  --bg-primary: #1b2838;
+  --bg-secondary: #171a21;
+  --bg-card: #2a475e;
+  --bg-hover: #335776;
+  --border: #3a5a78;
+  --text-primary: #c7d5e0;
+  --text-secondary: #8f98a0;
+  --text-muted: #66707b;
+  --accent: #66c0f4;
+  --accent-hover: #1a9fff;
+  --info: #1a9fff;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* 亮 · 知乎蓝 */
+[data-theme="zhihu"] {
+  --bg-primary: #f6f6f6;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-hover: #f0f2f7;
+  --border: #ebebeb;
+  --text-primary: #1a1a1a;
+  --text-secondary: #8590a6;
+  --text-muted: #afb8c0;
+  --accent: #0084ff;
+  --accent-hover: #056de8;
+  --info: #0084ff;
+  --shadow: 0 2px 8px rgba(18, 18, 18, 0.06);
+}
+
+/* 亮 · 豆瓣绿 */
+[data-theme="douban"] {
+  --bg-primary: #f4f4ef;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-hover: #eef0e9;
+  --border: #e3e5da;
+  --text-primary: #3c3c3c;
+  --text-secondary: #757575;
+  --text-muted: #aaaaaa;
+  --accent: #2e8b57;
+  --accent-hover: #42bd56;
+  --info: #2e8b57;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
 * {
   margin: 0;
   padding: 0;

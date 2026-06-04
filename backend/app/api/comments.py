@@ -149,7 +149,7 @@ async def list_comments(
             sentiment_score=c.sentiment_score, category=c.category, summary=c.summary,
             translation=c.translation, is_duplicate=c.is_duplicate,
             game_name=c.game.name if c.game else None, thumbs_up=c.thumbs_up,
-            bug_status=c.bug_status,
+            bug_status=c.bug_status, ai_status=c.ai_status, last_ai_error=c.last_ai_error,
         )
         for c in rows
     ]
@@ -185,7 +185,7 @@ async def get_comment(comment_id: uuid.UUID, db: AsyncSession = Depends(get_db),
         sentiment_score=c.sentiment_score, category=c.category, summary=c.summary,
         translation=c.translation, is_duplicate=c.is_duplicate,
         game_name=c.game.name if c.game else None, thumbs_up=c.thumbs_up,
-        bug_status=c.bug_status,
+        bug_status=c.bug_status, ai_status=c.ai_status,
     )
 
 
@@ -286,6 +286,26 @@ async def get_qq_context_compat(
 ):
     """旧路由别名，重定向到 chat-context。"""
     return await get_chat_context(comment_id, db, _)
+
+
+@router.post("/{comment_id}/ai-retry", status_code=204)
+async def retry_ai_analysis(
+    comment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """人工触发某条评论重新走 AI 分析：清空重试计数和退避时间，下次 worker tick 立即处理。"""
+    c = await db.get(Comment, comment_id)
+    if c is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    c.ai_status = "pending"
+    c.ai_retry_count = 0
+    c.next_ai_attempt_at = None
+    c.last_ai_error = None
+    # Discord 评论同时重置过滤器判定（让 worker 重新跑 filter_game_feedback）
+    if c.platform == "discord":
+        c.is_game_feedback = None
+    await db.commit()
 
 
 @router.post("/{comment_id}/translate")

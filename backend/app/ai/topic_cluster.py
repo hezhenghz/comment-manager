@@ -5,17 +5,18 @@
 每次爬取完成后自动触发，全量重算该游戏的话题列表。
 """
 
-import json
 import logging
 import uuid
 from datetime import timedelta
+
+from json_repair import repair_json
 
 from app.ai.router import get_ai_router
 
 logger = logging.getLogger(__name__)
 
 # 每批最多条数
-_BATCH_SIZE = 30
+_BATCH_SIZE = 15
 # 批内时间窗口上限（超过则强制切批）
 _BATCH_WINDOW_HOURS = 2
 # 话题至少需要几条消息（孤立消息不成话题）
@@ -108,18 +109,14 @@ async def _cluster_batch(batch: list, channel_field: str = "group_id") -> list[d
         logger.warning(f"[topic_cluster] AI 调用失败: {e}")
         return []
 
-    # 提取 JSON（防止模型在前后加废话）
+    # 提取并修复 JSON（模型常输出 ```json 包裹、未转义引号、缺逗号、截断尾部等畸形 JSON）
     text = resp.strip()
     start = text.find("[")
     end = text.rfind("]") + 1
-    if start == -1 or end == 0:
-        logger.warning(f"[topic_cluster] AI 返回无法解析为 JSON 数组: {text[:200]}")
-        return []
-
-    try:
-        raw_topics = json.loads(text[start:end])
-    except json.JSONDecodeError as e:
-        logger.warning(f"[topic_cluster] JSON 解析失败: {e} | 原文: {text[:200]}")
+    candidate = text[start:end] if start != -1 and end > start else text
+    raw_topics = repair_json(candidate, return_objects=True)
+    if not isinstance(raw_topics, list):
+        logger.warning(f"[topic_cluster] JSON 修复后仍无法解析为数组 | 原文: {text[:200]}")
         return []
 
     results = []

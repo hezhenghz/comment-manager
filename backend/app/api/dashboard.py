@@ -72,6 +72,26 @@ async def get_stats(
     )
 
 
+@router.get("/ai-queue")
+async def get_ai_queue(
+    game_id: uuid.UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """返回 AI 分析队列各状态计数（pending/failed/skipped/done），供前端展示积压情况。"""
+    q = select(Comment.ai_status, func.count(Comment.id))
+    if game_id:
+        q = q.where(Comment.game_id == game_id)
+    q = q.group_by(Comment.ai_status)
+    rows = (await db.execute(q)).all()
+
+    result = {"pending": 0, "failed": 0, "skipped": 0, "done": 0}
+    for status, cnt in rows:
+        if status in result:
+            result[status] = cnt
+    return result
+
+
 @router.get("/trends", response_model=list[TrendPoint])
 async def get_trends(
     days: int = Query(30, ge=1, le=90),
