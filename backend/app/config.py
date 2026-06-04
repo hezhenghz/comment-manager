@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     zentao_cookie:        str = ""
     zentao_sync_interval: int = 60   # 同步间隔（分钟）
 
+    # BUG上报 异地推送端点的鉴权 Token
+    # 若设置，则启用 POST /api/bugreports/_push（接收外部爬虫推送）
+    # 远程主机：设置此 Token 用于鉴权；本地爬虫：用同一 Token 推送
+    bug_push_token:       str = ""
+
     # ── 阵容物品使用率分析模块 ──────────────────────────────────────────
     lineup_api_base: str = "https://gateway-client.17m3.com/NHSmV"  # 离线玩家数据接口
     lineup_uniq_id: str = "87fc14b1"        # 接口固定标识（写死在游戏里）
