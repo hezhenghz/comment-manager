@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     # 远程主机：设置此 Token 用于鉴权；本地爬虫：用同一 Token 推送
     bug_push_token:       str = ""
 
+    # 本地推送服务的 HTTP 触发地址（异地架构下，远程后端用它转发"手动同步"请求）
+    # 例：http://192.168.216.45:9000
+    # 留空 → 手动同步走本机 ZenTao 凭据（单机架构）
+    local_pusher_url:     str = ""
+
     # ── 阵容物品使用率分析模块 ──────────────────────────────────────────
     lineup_api_base: str = "https://gateway-client.17m3.com/NHSmV"  # 离线玩家数据接口
     lineup_uniq_id: str = "87fc14b1"        # 接口固定标识（写死在游戏里）

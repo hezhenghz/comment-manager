@@ -146,16 +146,49 @@ async def sync_status(
 async def trigger_sync(
     current_user: User = Depends(get_current_user),
 ):
-    """手动触发 BUG 同步（仅管理员，使用本地 ZenTao 凭据）。"""
+    """
+    手动触发 BUG 同步。
+    优先级：
+      1. 如果配置了 LOCAL_PUSHER_URL，则转发到本地推送服务（异地架构）
+      2. 否则使用本机的 ZenTao 凭据直接同步（单机架构）
+    """
     if not current_user.is_admin:
         from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="仅管理员可触发同步")
 
+    settings = get_settings()
+    local_pusher_url = getattr(settings, "local_pusher_url", "") or os.environ.get("LOCAL_PUSHER_URL", "")
+
+    # 异地架构：转发到本地推送服务
+    if local_pusher_url:
+        push_token = getattr(settings, "bug_push_token", "") or os.environ.get("BUG_PUSH_TOKEN", "")
+        if not push_token:
+            return {"status": "error", "message": "BUG_PUSH_TOKEN 未配置"}
+
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.post(
+                    f"{local_pusher_url.rstrip('/')}/trigger",
+                    headers={"X-Push-Token": push_token},
+                )
+            if resp.status_code == 200:
+                return {"status": "started", "message": "已通知本地推送服务，约 1 分钟后可见新数据"}
+            elif resp.status_code == 401:
+                return {"status": "error", "message": "本地推送服务 Token 验证失败"}
+            else:
+                return {"status": "error", "message": f"本地推送服务返回 {resp.status_code}"}
+        except httpx.ConnectError:
+            return {"status": "error", "message": "无法连接本地推送服务（请检查本地服务是否运行 + 防火墙）"}
+        except httpx.TimeoutException:
+            return {"status": "error", "message": "连接本地推送服务超时"}
+        except Exception as e:
+            return {"status": "error", "message": f"转发失败: {e}"}
+
+    # 单机架构：本机直接同步
     from app.crawlers.zentao.sync import sync_bug_reports, _is_syncing
     if _is_syncing:
         return {"status": "already_running", "message": "同步正在进行中"}
-
-    # 异步在后台执行，立即返回
     asyncio.create_task(sync_bug_reports())
     return {"status": "started", "message": "同步已开始"}
 
