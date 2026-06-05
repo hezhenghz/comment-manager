@@ -121,7 +121,23 @@
                     <div class="expand-label">重现步骤 / 描述：</div>
                     <pre class="desc-pre">{{ bug.description }}</pre>
                   </div>
-                  <div v-if="bug.source_url" class="expand-link">
+                  <div
+                    v-if="bug.screenshot_url || bug.save_url || bug.log_url || bug.prev_log_url"
+                    class="expand-downloads"
+                  >
+                    <div class="expand-label">关联文件下载：</div>
+                    <div class="download-btns">
+                      <a v-if="bug.screenshot_url" class="download-btn" :href="bug.screenshot_url"
+                         target="_blank" rel="noopener">📷 截图</a>
+                      <a v-if="bug.save_url" class="download-btn" :href="bug.save_url"
+                         target="_blank" rel="noopener">💾 存档</a>
+                      <a v-if="bug.log_url" class="download-btn" :href="bug.log_url"
+                         target="_blank" rel="noopener">📄 日志</a>
+                      <a v-if="bug.prev_log_url" class="download-btn" :href="bug.prev_log_url"
+                         target="_blank" rel="noopener">📄 前一次日志</a>
+                    </div>
+                  </div>
+                  <div v-else-if="bug.source_url" class="expand-link">
                     <a :href="bug.source_url" target="_blank" rel="noopener">下载 Dump 文件 ↗</a>
                   </div>
                 </div>
@@ -516,6 +532,34 @@ th {
   text-decoration: none;
 }
 .expand-link a:hover { text-decoration: underline; }
+
+.expand-downloads {
+  margin-top: 8px;
+}
+.download-btns {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: all 0.15s;
+}
+.download-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 /* ── 分页 ── */
 .pagination {

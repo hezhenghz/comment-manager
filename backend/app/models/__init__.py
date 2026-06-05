@@ -190,6 +190,11 @@ class BugReport(Base):
     product:      Mapped[str]          = mapped_column(String(50), default="xkbb")
     fetched_at:   Mapped[datetime]     = mapped_column(DateTime, default=datetime.utcnow)
     raw_json:     Mapped[dict | None]  = mapped_column(JSONB)
+    # 4 个关联文件的下载链接（同一玩家反馈聚合）
+    screenshot_url: Mapped[str | None] = mapped_column(String(1024))   # 截图 .png
+    save_url:       Mapped[str | None] = mapped_column(String(1024))   # 存档 PlayerData.bytes
+    log_url:        Mapped[str | None] = mapped_column(String(1024))   # 日志 Player.log
+    prev_log_url:   Mapped[str | None] = mapped_column(String(1024))   # 前一次日志 Player-prev.log
 
 
 # ── 阵容物品使用率分析模块（独立于评论业务，无 game_id 外键）─────────────

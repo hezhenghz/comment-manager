@@ -55,6 +55,11 @@ def _bug_to_dict(b: BugReport) -> dict:
         "source_url":   b.source_url,
         "product":      b.product,
         "fetched_at":   b.fetched_at.isoformat() + "Z" if b.fetched_at else None,
+        # 4 个关联文件下载链接
+        "screenshot_url": b.screenshot_url,
+        "save_url":       b.save_url,
+        "log_url":        b.log_url,
+        "prev_log_url":   b.prev_log_url,
     }
 
 
@@ -196,21 +201,26 @@ async def trigger_sync(
 # ─── 外部推送端点（异地爬虫架构） ───────────────────────────────────────────
 
 class BugReportPushItem(BaseModel):
-    external_id:  str
-    title:        str
-    description:  Optional[str] = None
-    status:       Optional[str] = "active"
-    priority:     Optional[int] = None
-    severity:     Optional[int] = None
-    module:       Optional[str] = None
-    submitter:    Optional[str] = None
-    assignee:     Optional[str] = None
-    submitted_at: Optional[datetime] = None
-    resolved_at:  Optional[datetime] = None
-    closed_at:    Optional[datetime] = None
-    source_url:   Optional[str] = None
-    product:      Optional[str] = "xkbb"
-    raw_json:     Optional[dict] = None
+    external_id:    str
+    title:          str
+    description:    Optional[str] = None
+    status:         Optional[str] = "active"
+    priority:       Optional[int] = None
+    severity:       Optional[int] = None
+    module:         Optional[str] = None
+    submitter:      Optional[str] = None
+    assignee:       Optional[str] = None
+    submitted_at:   Optional[datetime] = None
+    resolved_at:    Optional[datetime] = None
+    closed_at:      Optional[datetime] = None
+    source_url:     Optional[str] = None
+    product:        Optional[str] = "xkbb"
+    raw_json:       Optional[dict] = None
+    # 4 个关联文件下载链接
+    screenshot_url: Optional[str] = None
+    save_url:       Optional[str] = None
+    log_url:        Optional[str] = None
+    prev_log_url:   Optional[str] = None
 
 
 class BugReportPushPayload(BaseModel):
@@ -251,22 +261,26 @@ async def push_bug_reports(
             continue
 
         db.add(BugReport(
-            external_id  = item.external_id,
-            title        = item.title,
-            description  = item.description,
-            status       = item.status or "active",
-            priority     = item.priority,
-            severity     = item.severity,
-            module       = item.module,
-            submitter    = item.submitter,
-            assignee     = item.assignee,
-            submitted_at = item.submitted_at,
-            resolved_at  = item.resolved_at,
-            closed_at    = item.closed_at,
-            source_url   = item.source_url,
-            product      = item.product or "xkbb",
-            fetched_at   = datetime.utcnow(),
-            raw_json     = item.raw_json,
+            external_id    = item.external_id,
+            title          = item.title,
+            description    = item.description,
+            status         = item.status or "active",
+            priority       = item.priority,
+            severity       = item.severity,
+            module         = item.module,
+            submitter      = item.submitter,
+            assignee       = item.assignee,
+            submitted_at   = item.submitted_at,
+            resolved_at    = item.resolved_at,
+            closed_at      = item.closed_at,
+            source_url     = item.source_url,
+            product        = item.product or "xkbb",
+            fetched_at     = datetime.utcnow(),
+            raw_json       = item.raw_json,
+            screenshot_url = item.screenshot_url,
+            save_url       = item.save_url,
+            log_url        = item.log_url,
+            prev_log_url   = item.prev_log_url,
         ))
         new_count += 1
 
