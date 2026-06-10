@@ -20,7 +20,7 @@ _SYSTEM_PROMPT = (
     "Keep ONLY messages where a player expresses substantive, specific feedback about the game.\n"
     "\n"
     "Output 1 ONLY for:\n"
-    "- Bug reports or technical issues with specific details\n"
+    "- Bug reports: a specific, non-expected technical malfunction (crash, error, broken feature, data loss, visual/value glitch). Mere dissatisfaction (too hard, too expensive, too weak) is NOT a bug.\n"
     "- Feature suggestions or improvement requests\n"
     "- Specific complaints about mechanics, balance, or design\n"
     "- Meaningful reviews or opinions about gameplay experience\n"

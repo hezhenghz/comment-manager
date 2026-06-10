@@ -17,6 +17,7 @@ from json_repair import repair_json
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.router import get_ai_router
+from app.ai.categories import CATEGORIES, CATEGORY_GUIDE_ZH
 from app.ai.topic_cluster import _split_into_batches  # 复用批次切分逻辑
 
 logger = logging.getLogger(__name__)
@@ -33,16 +34,7 @@ _SYSTEM_PROMPT = """\
   - is_feedback = true   : 与游戏相关的有效反馈。
                            必须返回 category 和 sentiment（不能省略，不能为 null）。
 
-分类（仅当 is_feedback=true 时返回，从下面 5 个里选一个最符合的）：
-  bug        — 游戏出现非预期的错误、崩溃或功能失效。
-               例：闪退、技能失效、数据丢失、显示错误、进不了游戏。
-  suggestion — 玩家希望新增或修改某个功能/设计。
-               例："建议加个XXX"、"能不能把XXX改成YYY"、"希望增加..."。
-  complaint  — 对游戏现有设计/运营/定价的不满（非 bug，是对有意设计的抱怨）。
-               例：价格太贵、平衡性差、更新太慢、某机制不合理。
-  praise     — 明确的正面评价。
-               例："这个版本改得很好"、"XXX功能做得很棒"。
-  other      — 与游戏相关但不属于以上（攻略讨论、资讯转发、活动等）。
+（仅当 is_feedback=true 时返回 category）""" + CATEGORY_GUIDE_ZH + """
 
 情感（仅当 is_feedback=true 时返回，从下面 3 个里选一个）：
   positive   — 整体正面/满意
@@ -73,7 +65,7 @@ _SYSTEM_PROMPT = """\
 }
 """
 
-_VALID_CATEGORIES = {"bug", "suggestion", "complaint", "praise", "other"}
+_VALID_CATEGORIES = CATEGORIES
 _VALID_SENTIMENTS = {"positive", "negative", "neutral"}
 
 
