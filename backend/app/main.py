@@ -28,6 +28,9 @@ async def lifespan(app: FastAPI):
         lineup_enabled, lineup_interval = cfg.enabled, cfg.interval_hours
     start_scheduler(lineup_enabled=lineup_enabled, lineup_interval_hours=lineup_interval)
     start_ai_worker()
+    # NapCat 掉线自动重启看门狗（仅当 NAPCAT_WATCHDOG_ENABLED=true 时启动）
+    from app.napcat.watchdog import start_napcat_watchdog
+    start_napcat_watchdog()
     yield
     await engine.dispose()
 

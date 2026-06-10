@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     qq_access_token: str = ""      # access_token，留空则不带 Authorization 头
     qq_at_always_include: str = "" # 逗号分隔的 QQ 号，@ 任意一个则无条件入库，例：86114262,10001
 
+    # NapCat 掉线自动重启看门狗
+    napcat_watchdog_enabled: bool = False            # 总开关，true 才启动
+    napcat_container_name: str = "napcat"            # docker restart 的容器名
+    napcat_admin_qq: int = 0                          # 恢复在线后私聊通知的管理员 QQ
+    napcat_webui_url: str = "http://127.0.0.1:6099"  # 需扫码时告警里给出的 WebUI 地址
+    napcat_restart_cooldown_minutes: int = 10        # 重启后冷却，期内不再检测/重启
+    napcat_restart_daily_limit: int = 6              # 24h 内最多自动重启次数，超过只告警
+    napcat_poll_interval_seconds: int = 60           # 轮询在线状态间隔
+
     # ZenTao BUG上报（dump.om.dianhun.cn）
     zentao_url:           str = "http://dump.om.dianhun.cn"
     zentao_username:      str = ""
