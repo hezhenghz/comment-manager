@@ -33,6 +33,7 @@ _SOURCE_TYPE_LABEL = {
     "bug": "Bug 反馈",
     "suggestion": "功能建议",
     "topic": "群聊话题",
+    "bugreport": "BUG上报",
 }
 
 
@@ -46,7 +47,7 @@ async def generate_requirement_text(snapshot: dict) -> str:
     from app.ai.router import get_ai_router
 
     source_type = snapshot.get("source_type", "")
-    content = snapshot.get("content") or snapshot.get("summary") or ""
+    content = snapshot.get("content") or snapshot.get("summary") or snapshot.get("description") or ""
     title = snapshot.get("title", "")
     category = snapshot.get("category", "")
     sentiment = snapshot.get("sentiment", "")

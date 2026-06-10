@@ -75,6 +75,7 @@
             <th style="width:90px">提交人</th>
             <th style="width:90px">指派人</th>
             <th style="width:120px">提交时间</th>
+            <th style="width:96px">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -85,7 +86,9 @@
               @click="toggleExpand(bug.id)"
             >
               <td class="bug-id">#{{ bug.external_id }}</td>
-              <td class="bug-title">{{ bug.title }}</td>
+              <td class="bug-title">
+                <span v-if="bug.screenshot_url" class="has-shot" title="含截图">🖼️</span>{{ bug.title }}
+              </td>
               <td>
                 <span class="badge" :class="statusClass(bug.status)">
                   {{ bug.status_label }}
@@ -106,10 +109,19 @@
               <td class="muted">{{ bug.submitter || '—' }}</td>
               <td class="muted">{{ bug.assignee || '—' }}</td>
               <td class="muted">{{ formatDate(bug.submitted_at) }}</td>
+              <td @click.stop>
+                <span v-if="collectedIds.has(bug.id)" class="collected-badge">✅ 已安排</span>
+                <button v-else class="btn-collect"
+                        :disabled="collectingId === bug.id || !gameStore.selectedGameId"
+                        :title="!gameStore.selectedGameId ? '请先在侧边栏选择游戏' : ''"
+                        @click.stop="collectBug(bug)">
+                  {{ collectingId === bug.id ? '采集中…' : '📌 采集' }}
+                </button>
+              </td>
             </tr>
             <!-- 展开行 -->
             <tr v-if="expandedId === bug.id" class="expand-row">
-              <td colspan="8">
+              <td colspan="9">
                 <div class="expand-content">
                   <div v-if="bug.module" class="expand-field">
                     <span class="expand-label">模块：</span>{{ bug.module }}
@@ -127,8 +139,8 @@
                   >
                     <div class="expand-label">关联文件下载：</div>
                     <div class="download-btns">
-                      <a v-if="bug.screenshot_url" class="download-btn" :href="bug.screenshot_url"
-                         target="_blank" rel="noopener">📷 截图</a>
+                      <button v-if="bug.screenshot_url" class="download-btn"
+                              @click.stop="openPreview(bug.screenshot_url)">📷 截图</button>
                       <a v-if="bug.save_url" class="download-btn" :href="bug.save_url"
                          target="_blank" rel="noopener">💾 存档</a>
                       <a v-if="bug.log_url" class="download-btn" :href="bug.log_url"
@@ -154,15 +166,28 @@
       <span>第 {{ page }} / {{ Math.ceil(total / perPage) }} 页，共 {{ total }} 条</span>
       <button :disabled="page >= Math.ceil(total / perPage)" @click="goPage(page + 1)">下一页 ›</button>
     </div>
+
+    <!-- 截图预览弹窗 -->
+    <div v-if="previewUrl" class="img-modal" @click.self="closePreview">
+      <div class="img-modal-body">
+        <button class="img-modal-close" @click="closePreview">×</button>
+        <img :src="previewUrl" alt="截图" class="img-modal-img"
+             @error="previewError = true" v-show="!previewError" />
+        <div v-if="previewError" class="img-modal-err">图片加载失败，可尝试下载查看</div>
+        <a class="img-modal-download" :href="previewUrl" target="_blank" rel="noopener" download>⬇ 下载</a>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue';
 import api from '../../api';
 import { useAuthStore } from '../../stores/auth';
+import { useGameStore } from '../../stores/game';
 
 const authStore = useAuthStore();
+const gameStore = useGameStore();
 
 // ── 数据 ────────────────────────────────────────────────────────────────────
 const items     = ref<any[]>([]);
@@ -189,9 +214,74 @@ const filters = reactive({
   keyword:  '',
 });
 
+// 截图预览弹窗
+const previewUrl   = ref<string | null>(null);
+const previewError = ref(false);
+
+// 采集到需求板
+const collectedIds = ref<Set<string>>(new Set());
+const collectingId = ref<string | null>(null);
+
+async function loadCollectedIds() {
+  const gid = gameStore.selectedGameId;
+  if (!gid) { collectedIds.value = new Set(); return; }
+  try {
+    const { data } = await api.get(`/requirements/collected-ids?game_id=${gid}`);
+    collectedIds.value = new Set(data.source_ids as string[]);
+  } catch {}
+}
+
+async function collectBug(bug: any) {
+  const gid = gameStore.selectedGameId;
+  if (!gid || collectingId.value || collectedIds.value.has(bug.id)) return;
+  collectingId.value = bug.id;
+  try {
+    await api.post('/requirements', {
+      game_id: gid,
+      source_type: 'bugreport',
+      source_id: bug.id,
+      source_snapshot: {
+        title:          bug.title,
+        description:    bug.description,
+        external_id:    bug.external_id,
+        screenshot_url: bug.screenshot_url,
+        save_url:       bug.save_url,
+        log_url:        bug.log_url,
+        prev_log_url:   bug.prev_log_url,
+        source_url:     bug.source_url,
+      },
+    });
+    collectedIds.value = new Set([...collectedIds.value, bug.id]);
+  } catch (e: any) {
+    if (e?.response?.status === 409) {
+      collectedIds.value = new Set([...collectedIds.value, bug.id]);
+    }
+  } finally {
+    collectingId.value = null;
+  }
+}
+
+function openPreview(url: string) {
+  previewUrl.value = url;
+  previewError.value = false;
+}
+function closePreview() {
+  previewUrl.value = null;
+}
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') closePreview();
+}
+
 // ── 生命周期 ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
-  await Promise.all([loadList(), loadStats(), loadSyncStatus()]);
+  window.addEventListener('keydown', onKeydown);
+  await Promise.all([loadList(), loadStats(), loadSyncStatus(), loadCollectedIds()]);
+});
+
+watch(() => gameStore.selectedGameId, () => { loadCollectedIds(); });
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown);
 });
 
 // ── 数据加载 ─────────────────────────────────────────────────────────────────
@@ -449,6 +539,7 @@ th {
 
 .bug-id { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .bug-title { color: var(--text-primary); max-width: 360px; }
+.has-shot { margin-right: 5px; font-size: 13px; }
 .muted { color: var(--text-muted); }
 
 /* ── 状态徽章 ── */
@@ -588,4 +679,55 @@ th {
 }
 
 .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── 采集到需求板 ── */
+.btn-collect {
+  padding: 4px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.btn-collect:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-collect:disabled { opacity: 0.5; cursor: not-allowed; }
+.collected-badge {
+  font-size: 12px;
+  color: var(--positive, #22c55e);
+  white-space: nowrap;
+}
+
+/* ── 截图预览弹窗 ── */
+.img-modal {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.7);
+  display: flex; align-items: center; justify-content: center;
+  padding: 40px;
+}
+.img-modal-body {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  max-width: 90vw; max-height: 90vh;
+}
+.img-modal-img {
+  max-width: 88vw; max-height: 78vh; object-fit: contain;
+  border-radius: var(--radius); background: #fff;
+}
+.img-modal-close {
+  position: absolute; top: -12px; right: -12px;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  color: var(--text-primary); font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.img-modal-close:hover { border-color: var(--accent); color: var(--accent); }
+.img-modal-download {
+  padding: 8px 24px; background: var(--accent); color: #fff;
+  border-radius: var(--radius); font-size: 14px; text-decoration: none;
+}
+.img-modal-download:hover { opacity: 0.85; }
+.img-modal-err { color: #fff; font-size: 13px; }
 </style>

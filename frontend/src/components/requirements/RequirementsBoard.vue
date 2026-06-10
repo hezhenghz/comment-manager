@@ -63,7 +63,22 @@
                 <span v-if="card.source_snapshot?.author_name" class="author-hint">{{ card.source_snapshot.author_name }}</span>
               </div>
               <template v-if="expandedOriginal.has(card.id)">
-                <div class="original-content">
+                <!-- BUG上报：标题 + 描述 + 4 个文件链接 -->
+                <template v-if="card.source_type === 'bugreport'">
+                  <div v-if="card.source_snapshot?.title" class="bug-title-line">{{ card.source_snapshot.title }}</div>
+                  <div v-if="card.source_snapshot?.description" class="original-content">{{ card.source_snapshot.description }}</div>
+                  <div class="bug-files">
+                    <button v-if="card.source_snapshot?.screenshot_url" class="bug-file-btn"
+                            @click="previewImg(card.source_snapshot.screenshot_url)">📷 截图</button>
+                    <a v-if="card.source_snapshot?.save_url" class="bug-file-btn"
+                       :href="card.source_snapshot.save_url" target="_blank" rel="noopener">💾 存档</a>
+                    <a v-if="card.source_snapshot?.log_url" class="bug-file-btn"
+                       :href="card.source_snapshot.log_url" target="_blank" rel="noopener">📄 日志</a>
+                    <a v-if="card.source_snapshot?.prev_log_url" class="bug-file-btn"
+                       :href="card.source_snapshot.prev_log_url" target="_blank" rel="noopener">📄 前一次日志</a>
+                  </div>
+                </template>
+                <div v-else class="original-content">
                   {{ card.source_snapshot?.content || card.source_snapshot?.summary || '—' }}
                 </div>
 
@@ -142,11 +157,22 @@
         </div>
       </div>
     </div>
+
+    <!-- 截图预览弹窗 -->
+    <div v-if="previewUrl" class="img-modal" @click.self="closePreview">
+      <div class="img-modal-body">
+        <button class="img-modal-close" @click="closePreview">×</button>
+        <img :src="previewUrl" alt="截图" class="img-modal-img"
+             @error="previewError = true" v-show="!previewError" />
+        <div v-if="previewError" class="img-modal-err">图片加载失败，可尝试下载查看</div>
+        <a class="img-modal-download" :href="previewUrl" target="_blank" rel="noopener" download>⬇ 下载</a>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useGameStore } from '../../stores/game';
 import api from '../../api';
 
@@ -171,6 +197,13 @@ const savedId = ref<string | null>(null);
 const contextData = ref<Record<string, { type: string; data: any } | null>>({});
 const loadingCtx = ref<Set<string>>(new Set());
 
+// 截图预览弹窗（bugreport 来源）
+const previewUrl = ref<string | null>(null);
+const previewError = ref(false);
+function previewImg(url: string) { previewUrl.value = url; previewError.value = false; }
+function closePreview() { previewUrl.value = null; }
+function onKeydown(e: KeyboardEvent) { if (e.key === 'Escape') closePreview(); }
+
 const COLUMNS = [
   { status: 'todo',        label: '未开始' },
   { status: 'in_progress', label: '进行中' },
@@ -183,6 +216,7 @@ const FILTERS = [
   { value: 'bug',        label: 'BUG' },
   { value: 'suggestion', label: '建议' },
   { value: 'topic',      label: '话题' },
+  { value: 'bugreport',  label: 'BUG上报' },
 ];
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -190,6 +224,7 @@ const SOURCE_LABEL: Record<string, string> = {
   bug:        'BUG',
   suggestion: '建议',
   topic:      '话题',
+  bugreport:  'BUG上报',
 };
 
 const PLATFORM_LABEL: Record<string, string> = {
@@ -310,7 +345,8 @@ function formatDate(t: string): string {
   return new Date(iso).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
 }
 
-onMounted(() => load());
+onMounted(() => { load(); window.addEventListener('keydown', onKeydown); });
+onUnmounted(() => window.removeEventListener('keydown', onKeydown));
 watch(() => gameStore.selectedGameId, () => { filterType.value = ''; load(); });
 </script>
 
@@ -430,6 +466,7 @@ h2 {
 .type-suggestion { border-left-color: rgba(99,102,241,0.5); }
 .type-topic      { border-left-color: rgba(34,197,94,0.4); }
 .type-comment    { border-left-color: rgba(156,163,175,0.5); }
+.type-bugreport  { border-left-color: rgba(245,158,11,0.6); }
 
 /* 卡头 */
 .card-head {
@@ -452,6 +489,7 @@ h2 {
 .src-bug        { background: rgba(239,68,68,0.12);   color: var(--danger,#ef4444); }
 .src-suggestion { background: rgba(99,102,241,0.12);  color: var(--accent); }
 .src-topic      { background: rgba(34,197,94,0.12);   color: var(--success,#22c55e); }
+.src-bugreport  { background: rgba(245,158,11,0.14);  color: var(--warning,#f59e0b); }
 .badge-platform { background: var(--bg-hover); color: var(--text-muted); }
 .cat-bug        { background: rgba(239,68,68,0.12);   color: var(--danger,#ef4444); }
 .cat-suggestion { background: rgba(99,102,241,0.12);  color: var(--accent); }
@@ -587,6 +625,67 @@ h2 {
 .status-in_progress { color: #e9a800; }
 .status-done        { color: #22c55e; }
 .card-date { font-size: 11px; color: var(--text-muted); }
+
+/* BUG上报：原始内容 */
+.bug-title-line {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+  word-break: break-word;
+}
+.bug-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.bug-file-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.bug-file-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* 截图预览弹窗 */
+.img-modal {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.7);
+  display: flex; align-items: center; justify-content: center;
+  padding: 40px;
+}
+.img-modal-body {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  max-width: 90vw; max-height: 90vh;
+}
+.img-modal-img {
+  max-width: 88vw; max-height: 78vh; object-fit: contain;
+  border-radius: var(--radius); background: #fff;
+}
+.img-modal-close {
+  position: absolute; top: -12px; right: -12px;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  color: var(--text-primary); font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.img-modal-close:hover { border-color: var(--accent); color: var(--accent); }
+.img-modal-download {
+  padding: 8px 24px; background: var(--accent); color: #fff;
+  border-radius: var(--radius); font-size: 14px; text-decoration: none;
+}
+.img-modal-download:hover { opacity: 0.85; }
+.img-modal-err { color: #fff; font-size: 13px; }
 
 /* 响应式：窄屏转为单列 */
 @media (max-width: 900px) {
