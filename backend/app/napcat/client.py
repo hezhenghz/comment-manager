@@ -34,7 +34,7 @@ async def get_status() -> bool:
     if not base_url:
         return False
     try:
-        async with httpx.AsyncClient(base_url=base_url, headers=_headers(), timeout=10) as client:
+        async with httpx.AsyncClient(base_url=base_url, headers=_headers(), timeout=10, trust_env=False) as client:
             r = await client.post("/get_status", json={})
             data = r.json()
             return bool(data.get("data", {}).get("online"))
@@ -50,7 +50,7 @@ async def send_private_msg(user_id: int, text: str) -> bool:
     if not base_url or not user_id:
         return False
     try:
-        async with httpx.AsyncClient(base_url=base_url, headers=_headers(), timeout=10) as client:
+        async with httpx.AsyncClient(base_url=base_url, headers=_headers(), timeout=10, trust_env=False) as client:
             r = await client.post("/send_private_msg", json={"user_id": int(user_id), "message": text})
             data = r.json()
             ok = data.get("status") == "ok" or data.get("retcode") == 0

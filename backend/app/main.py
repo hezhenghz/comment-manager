@@ -57,6 +57,8 @@ from app.api.requirements import router as requirements_router
 from app.api.chat import router as chat_router
 from app.api.bugreports import router as bugreports_router
 from app.api.lineup import router as lineup_router
+from app.api.announcements import router as announcements_router
+from app.api.curation import router as curation_router
 
 app.include_router(auth_router)
 app.include_router(games_router)
@@ -69,10 +71,16 @@ app.include_router(requirements_router)
 app.include_router(chat_router)
 app.include_router(bugreports_router)
 app.include_router(lineup_router)
+app.include_router(announcements_router)
+app.include_router(curation_router)
 
 # BUG上报 同步定时任务
 from app.crawlers.zentao.sync import start_bug_sync_scheduler
 start_bug_sync_scheduler()
+
+# 更新公告 同步定时任务（默认 60 分钟）
+from app.crawlers.steam.announcement_sync import start_announcement_sync_scheduler
+start_announcement_sync_scheduler(interval_minutes=60)
 
 
 @app.get("/api/health")

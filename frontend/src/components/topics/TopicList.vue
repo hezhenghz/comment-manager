@@ -36,15 +36,20 @@
             <span v-if="t.sentiment" class="badge" :class="`sent-${t.sentiment}`">{{ SENTIMENT_LABEL[t.sentiment] ?? t.sentiment }}</span>
             <span class="meta-text">{{ formatTimeRange(t.started_at, t.ended_at) }}</span>
             <span class="meta-text">{{ t.comment_count }} 条消息</span>
-            <span v-if="collectedIds.has(t.id)" class="collected-badge">✅ 已安排</span>
-            <button
-              v-else
-              class="btn-collect-small"
-              :disabled="collectingId === t.id"
-              @click.stop="collectTopic(t)"
-            >
-              {{ collectingId === t.id ? '…' : '📌 采集' }}
-            </button>
+            <template v-if="decisions[t.id] === 'adopted'">
+              <span class="decision-badge adopted">✅ 已采纳</span>
+              <button class="btn-redo" :disabled="decidingId === t.id" @click.stop="decide(t, 'rejected')">改判</button>
+            </template>
+            <template v-else-if="decisions[t.id] === 'rejected'">
+              <span class="decision-badge rejected">⛔ 已不采纳</span>
+              <button class="btn-redo" :disabled="decidingId === t.id" @click.stop="decide(t, 'adopted')">改判</button>
+            </template>
+            <template v-else>
+              <button class="btn-adopt-small" :disabled="decidingId === t.id" @click.stop="decide(t, 'adopted')">
+                {{ decidingId === t.id ? '…' : '采纳' }}
+              </button>
+              <button class="btn-reject-small" :disabled="decidingId === t.id" @click.stop="decide(t, 'rejected')">不采纳</button>
+            </template>
             <span class="expand-icon">{{ expanded.has(t.id) ? '▲' : '▼' }}</span>
           </div>
         </div>
@@ -126,9 +131,9 @@ const reclusterMsg = ref('');
 const groupNames = ref<Record<string, string>>({});         // QQ group_id → 真实群名（NapCat 实时查询）
 const discordChannelNames = ref<Record<string, string>>({});  // Discord channel_id → 自定义名称
 
-// 需求板
-const collectedIds = ref<Set<string>>(new Set());
-const collectingId = ref<string | null>(null);
+// 需策划处理：source_id → 'adopted' | 'rejected'
+const decisions  = ref<Record<string, string>>({});
+const decidingId = ref<string | null>(null);
 
 async function loadGroupNames() {
   const gameId = gameStore.selectedGameId;
@@ -215,23 +220,24 @@ function groupLabel(t: TopicItem): string {
   return groupNames.value[t.group_id] || t.group_id;
 }
 
-async function loadCollectedIds() {
+async function loadDecisions() {
   const gameId = gameStore.selectedGameId;
   if (!gameId) return;
   try {
-    const { data } = await api.get(`/requirements/collected-ids?game_id=${gameId}`);
-    collectedIds.value = new Set(data.source_ids as string[]);
+    const { data } = await api.get(`/curation/decisions?game_id=${gameId}&source_type=topic`);
+    decisions.value = data as Record<string, string>;
   } catch {}
 }
 
-async function collectTopic(t: TopicItem) {
-  if (collectingId.value || collectedIds.value.has(t.id)) return;
-  collectingId.value = t.id;
+async function decide(t: TopicItem, decision: 'adopted' | 'rejected') {
+  if (decidingId.value) return;
+  decidingId.value = t.id;
   try {
-    await api.post('/requirements', {
+    await api.post('/curation/decide', {
       game_id: gameStore.selectedGameId,
       source_type: 'topic',
       source_id: t.id,
+      decision,
       source_snapshot: {
         title:         t.title,
         summary:       t.summary,
@@ -242,13 +248,11 @@ async function collectTopic(t: TopicItem) {
         comment_count: t.comment_count,
       },
     });
-    collectedIds.value = new Set([...collectedIds.value, t.id]);
-  } catch (e: any) {
-    if (e?.response?.status === 409) {
-      collectedIds.value = new Set([...collectedIds.value, t.id]);
-    }
+    decisions.value = { ...decisions.value, [t.id]: decision };
+  } catch (e) {
+    console.error('[curation] decide error', e);
   } finally {
-    collectingId.value = null;
+    decidingId.value = null;
   }
 }
 
@@ -269,10 +273,10 @@ async function recluster() {
   }
 }
 
-onMounted(() => { load(); loadGroupNames(); loadDiscordChannelNames(); loadCollectedIds(); });
+onMounted(() => { load(); loadGroupNames(); loadDiscordChannelNames(); loadDecisions(); });
 watch(() => gameStore.selectedGameId, () => {
   page.value = 1; expanded.value = new Set(); topicComments.value = {};
-  load(); loadGroupNames(); loadDiscordChannelNames(); loadCollectedIds();
+  load(); loadGroupNames(); loadDiscordChannelNames(); loadDecisions();
 });
 </script>
 
@@ -452,24 +456,28 @@ h2 {
 .pagination button:hover:not(:disabled) { border-color: var(--accent); }
 
 /* 采集按钮 */
-.btn-collect-small {
+/* ── 需策划处理 ── */
+.btn-adopt-small, .btn-reject-small, .btn-redo {
   padding: 2px 10px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text-secondary);
   font-size: 11px;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition: all 0.15s;
   white-space: nowrap;
 }
-.btn-collect-small:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.btn-collect-small:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-adopt-small { background: var(--accent); color: #fff; border: none; margin-right: 4px; }
+.btn-adopt-small:hover:not(:disabled) { opacity: 0.85; }
+.btn-reject-small { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary); }
+.btn-reject-small:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+.btn-redo { background: transparent; border: 1px solid var(--border); color: var(--text-muted); margin-left: 6px; }
+.btn-redo:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-adopt-small:disabled, .btn-reject-small:disabled, .btn-redo:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.collected-badge {
+.decision-badge {
   font-size: 11px;
-  color: var(--success, #22c55e);
   font-weight: 500;
   white-space: nowrap;
 }
+.decision-badge.adopted  { color: var(--success, #22c55e); }
+.decision-badge.rejected { color: var(--text-muted); }
 </style>

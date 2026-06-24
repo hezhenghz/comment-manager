@@ -73,6 +73,11 @@
 
     <!-- 筛选栏 -->
     <div class="filters">
+      <label>时间范围
+        <select v-model.number="sinceDays" @change="onFilterChange">
+          <option v-for="o in sinceOptions" :key="o.value ?? 'all'" :value="o.value">{{ o.label }}</option>
+        </select>
+      </label>
       <label>门派
         <select v-model="menPai" @change="onFilterChange">
           <option :value="null">全部</option>
@@ -101,11 +106,11 @@
         <MenPaiDistribution :data="stats?.by_menpai ?? []" />
       </div>
       <!-- 按物品类型分组：每类型一行，左 Top20 / 右 Last20 -->
-      <UsageByTypeSection :menPai="menPai" :rankLevel="rankLevel" />
+      <UsageByTypeSection :menPai="menPai" :rankLevel="rankLevel" :sinceDays="sinceDays" />
       <!-- 各门派职业物品占比：5 行 2 列，每格一个门派（段位跟随筛选） -->
-      <MenPaiCareerGrid :menpais="menpais" :rankLevel="rankLevel" />
+      <MenPaiCareerGrid :menpais="menpais" :rankLevel="rankLevel" :sinceDays="sinceDays" />
       <!-- 选用失衡度：基尼系数 + 偏冷物品清单 -->
-      <ImbalanceSection :menPai="menPai" :rankLevel="rankLevel" />
+      <ImbalanceSection :menPai="menPai" :rankLevel="rankLevel" :sinceDays="sinceDays" />
     </div>
     <div v-else class="empty">暂无数据，点「立即拉取」开始采集。</div>
   </div>
@@ -131,6 +136,15 @@ const menPai = ref<number | null>(null);
 const rankLevel = ref<number | null>(null);
 const top = ref(50);
 const careerOnly = ref(false);
+
+// 时间范围：按 first_seen_at 过滤，默认近 7 天
+const sinceDays = ref<number | null>(7);
+const sinceOptions = [
+  { value: 1, label: '近1天' },
+  { value: 3, label: '近3天' },
+  { value: 7, label: '近7天' },
+  { value: 14, label: '近14天' },
+];
 
 const usage = ref<any>(null);
 const stats = ref<any>(null);
@@ -196,6 +210,7 @@ async function loadUsage() {
   const params: any = { top: top.value, careerOnly: careerOnly.value };
   if (menPai.value != null) params.menPai = menPai.value;
   if (rankLevel.value != null) params.rankLevel = rankLevel.value;
+  if (sinceDays.value != null) params.sinceDays = sinceDays.value;
   const { data } = await api.get('/lineup/usage', { params });
   usage.value = data;
 }
@@ -205,6 +220,7 @@ async function loadCareerData() {
   const params: any = { top: 15, careerOnly: true };
   if (menPai.value != null) params.menPai = menPai.value;
   if (rankLevel.value != null) params.rankLevel = rankLevel.value;
+  if (sinceDays.value != null) params.sinceDays = sinceDays.value;
   const { data } = await api.get('/lineup/usage', { params });
   careerData.value = data;
 }

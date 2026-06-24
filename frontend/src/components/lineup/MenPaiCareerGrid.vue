@@ -22,6 +22,7 @@ import CareerPie from './CareerPie.vue';
 const props = defineProps<{
   menpais: { value: number; name: string }[];
   rankLevel: number | null;
+  sinceDays: number | null;
 }>();
 
 // 门派 value → 职业物品列表
@@ -30,6 +31,7 @@ const dataMap = ref<Record<number, any[]>>({});
 async function loadOne(menPai: number) {
   const params: any = { top: 15, careerOnly: true, menPai };
   if (props.rankLevel != null) params.rankLevel = props.rankLevel;
+  if (props.sinceDays != null) params.sinceDays = props.sinceDays;
   try {
     const { data } = await api.get('/lineup/usage', { params });
     dataMap.value = { ...dataMap.value, [menPai]: data.items ?? [] };
@@ -43,8 +45,8 @@ function loadAll() {
 }
 
 onMounted(loadAll);
-// 门派列表就绪 或 段位筛选变化时重新拉取
-watch(() => [props.menpais, props.rankLevel], loadAll, { deep: true });
+// 门派列表就绪 / 段位 / 时间范围变化时重新拉取
+watch(() => [props.menpais, props.rankLevel, props.sinceDays], loadAll, { deep: true });
 </script>
 
 <style scoped>

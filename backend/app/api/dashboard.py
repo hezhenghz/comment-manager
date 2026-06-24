@@ -60,6 +60,32 @@ async def get_stats(
         topic_q = topic_q.where(QQTopic.game_id == game_id)
     topic_count = (await db.execute(topic_q)).scalar() or 0
 
+    # ── 需策划处理（待处理）计数 ──────────────────────────────────────────
+    # 待处理 = 该类条目中 source_id 未出现在已处理决定（decision != 'pending'）里的数量
+    from app.models import CurationDecision
+    processed_subq = select(CurationDecision.source_id).where(
+        CurationDecision.decision != "pending"
+    )
+    if game_id:
+        processed_subq = processed_subq.where(CurationDecision.game_id == game_id)
+    processed_subq = processed_subq.scalar_subquery()
+
+    # 评论待处理（非群聊平台、与 total 同口径）
+    comment_pending_q = non_chat_base.where(Comment.id.notin_(processed_subq))
+    comment_pending = (await db.execute(comment_pending_q)).scalar() or 0
+
+    bug_pending = (await db.execute(
+        bug_q.where(Comment.id.notin_(processed_subq))
+    )).scalar() or 0
+
+    suggestion_pending = (await db.execute(
+        suggestion_q.where(Comment.id.notin_(processed_subq))
+    )).scalar() or 0
+
+    topic_pending = (await db.execute(
+        topic_q.where(QQTopic.id.notin_(processed_subq))
+    )).scalar() or 0
+
     return DashboardStats(
         total_comments=total,
         today_new=today_new,
@@ -69,6 +95,10 @@ async def get_stats(
         today_suggestion_count=today_suggestion_count,
         topic_count=topic_count,
         negative_review_rate=negative_review_rate,
+        comment_pending=comment_pending,
+        suggestion_pending=suggestion_pending,
+        topic_pending=topic_pending,
+        bug_pending=bug_pending,
     )
 
 

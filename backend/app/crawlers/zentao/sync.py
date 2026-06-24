@@ -25,11 +25,12 @@ def get_sync_status() -> dict:
     }
 
 
-async def sync_bug_reports() -> dict:
+async def sync_bug_reports(limit: int | None = None) -> dict:
     """
     增量同步 Dump 上报：
     - 使用 since=_last_sync_at（初次同步抓取最近 7 天）
     - 新记录 INSERT，已存在的跳过（dump 记录不会变化）
+    - limit 不为空时为试爬：只取最近 limit 条入库
     返回 {"new": N, "updated": M, "error": None|str}
     """
     global _last_sync_at, _last_sync_count, _is_syncing
@@ -64,6 +65,14 @@ async def sync_bug_reports() -> dict:
         # 抓取数据（crawler 内部按天翻页）
         bugs = await crawler.fetch_bugs(since=since)
         logger.info(f"[zentao-sync] 共抓取 {len(bugs)} 条记录")
+
+        # 试爬：按提交时间倒序后只取最近 limit 条
+        if limit:
+            bugs = sorted(
+                bugs,
+                key=lambda b: b.get("submitted_at") or datetime.min,
+                reverse=True,
+            )[:limit]
 
         if bugs:
             from app.database import async_session

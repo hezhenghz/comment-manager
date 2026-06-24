@@ -114,7 +114,7 @@ class QQCrawler(BaseCrawler):
         all_raw: list[FetchedComment] = []
         base_url = settings.qq_napcat_url.rstrip("/")
 
-        async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=30) as client:
+        async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=30, trust_env=False) as client:
             for gid in group_ids:
                 items = await self._fetch_group(client, gid, since, limit, target_ids)
                 all_raw.extend(items)
@@ -139,7 +139,7 @@ class QQCrawler(BaseCrawler):
             headers["Authorization"] = f"Bearer {settings.qq_access_token}"
         base_url = settings.qq_napcat_url.rstrip("/")
         try:
-            async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=10) as client:
+            async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=10, trust_env=False) as client:
                 r = await client.post("/get_group_info", json={"group_id": int(gid)})
                 data = r.json()
                 return data.get("status") == "ok" or data.get("retcode") == 0

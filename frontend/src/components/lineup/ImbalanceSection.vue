@@ -88,6 +88,7 @@ import { qualityColor } from './qualityColor';
 const props = defineProps<{
   menPai: number | null;
   rankLevel: number | null;
+  sinceDays: number | null;
 }>();
 
 const types = ref<any[]>([]);
@@ -127,6 +128,7 @@ async function load() {
   const params: any = {};
   if (props.menPai != null) params.menPai = props.menPai;
   if (props.rankLevel != null) params.rankLevel = props.rankLevel;
+  if (props.sinceDays != null) params.sinceDays = props.sinceDays;
   try {
     const { data } = await api.get('/lineup/usage-imbalance', { params });
     types.value = data.types ?? [];
@@ -140,6 +142,7 @@ async function load() {
 async function loadCareerTop() {
   const params: any = {};
   if (props.rankLevel != null) params.rankLevel = props.rankLevel;
+  if (props.sinceDays != null) params.sinceDays = props.sinceDays;
   try {
     const { data } = await api.get('/lineup/career-top-imbalance', { params });
     careerTop.value = data.menpais ?? [];
@@ -149,8 +152,8 @@ async function loadCareerTop() {
 }
 
 onMounted(() => { load(); loadCareerTop(); });
-watch(() => [props.menPai, props.rankLevel], load);
-watch(() => props.rankLevel, loadCareerTop);
+watch(() => [props.menPai, props.rankLevel, props.sinceDays], load);
+watch(() => [props.rankLevel, props.sinceDays], loadCareerTop);
 </script>
 
 <style scoped>

@@ -8,14 +8,16 @@
     </div>
     <nav>
       <router-link to="/dashboard">仪表盘</router-link>
-      <router-link to="/comments">评论<span v-if="counts.total" class="nav-count">（{{ counts.total }}）</span></router-link>
-      <router-link to="/bugs">BUG<span v-if="counts.bug" class="nav-count">（{{ counts.bug }}）</span></router-link>
-      <router-link to="/suggestions">建议<span v-if="counts.suggestion" class="nav-count">（{{ counts.suggestion }}）</span></router-link>
-      <router-link to="/topics">话题<span v-if="counts.topic" class="nav-count">（{{ counts.topic }}）</span></router-link>
-      <router-link to="/requirements">需求板</router-link>
-      <router-link to="/chat">群聊</router-link>
-      <router-link to="/bugreports">BUG上报</router-link>
+      <router-link to="/comments">评论<span v-if="counts.commentPending" class="nav-pending">待处理 {{ counts.commentPending }}</span><span v-if="counts.total" class="nav-count">／共 {{ counts.total }}</span></router-link>
+      <router-link to="/bugs">BUG<span v-if="counts.bugPending" class="nav-pending">待处理 {{ counts.bugPending }}</span><span v-if="counts.bug" class="nav-count">／共 {{ counts.bug }}</span></router-link>
+      <router-link to="/suggestions">建议<span v-if="counts.suggestionPending" class="nav-pending">待处理 {{ counts.suggestionPending }}</span><span v-if="counts.suggestion" class="nav-count">／共 {{ counts.suggestion }}</span></router-link>
+      <router-link to="/topics">话题<span v-if="counts.topicPending" class="nav-pending">待处理 {{ counts.topicPending }}</span><span v-if="counts.topic" class="nav-count">／共 {{ counts.topic }}</span></router-link>
+      <!-- 群聊入口暂时隐藏（功能保留，路由 /chat 仍可直接访问） -->
+      <!-- <router-link to="/chat">群聊</router-link> -->
+      <router-link to="/bugreports">BUG上报<span v-if="counts.bugreportPending" class="nav-pending">待处理 {{ counts.bugreportPending }}</span></router-link>
+      <router-link to="/announcements">更新公告<span v-if="counts.announcement" class="nav-count">（{{ counts.announcement }}）</span></router-link>
       <router-link to="/lineup">阵容分析</router-link>
+      <router-link to="/requirements">需求板</router-link>
       <router-link v-if="auth.user?.is_admin" to="/games">游戏管理</router-link>
     </nav>
     <div class="theme-switcher">
@@ -48,7 +50,10 @@ const router = useRouter();
 const auth = useAuthStore();
 const gameStore = useGameStore();
 const themeStore = useThemeStore();
-const counts = ref({ total: 0, bug: 0, suggestion: 0, topic: 0 });
+const counts = ref({
+  total: 0, bug: 0, suggestion: 0, topic: 0, announcement: 0,
+  commentPending: 0, bugPending: 0, suggestionPending: 0, topicPending: 0, bugreportPending: 0,
+});
 
 onMounted(async () => {
   await gameStore.loadGames();
@@ -61,8 +66,24 @@ onMounted(async () => {
 async function fetchCounts() {
   try {
     const params = gameStore.selectedGameId ? { game_id: gameStore.selectedGameId } : {};
-    const { data } = await api.get('/dashboard/stats', { params });
-    counts.value = { total: data.total_comments, bug: data.bug_count, suggestion: data.suggestion_count, topic: data.topic_count ?? 0 };
+    const [statsRes, annRes, bugRes] = await Promise.all([
+      api.get('/dashboard/stats', { params }),
+      api.get('/announcements/count', { params }).catch(() => ({ data: { count: 0 } })),
+      api.get('/bugreports/stats').catch(() => ({ data: { pending: 0 } })),
+    ]);
+    const data = statsRes.data;
+    counts.value = {
+      total: data.total_comments,
+      bug: data.bug_count,
+      suggestion: data.suggestion_count,
+      topic: data.topic_count ?? 0,
+      announcement: annRes.data.count ?? 0,
+      commentPending: data.comment_pending ?? 0,
+      bugPending: data.bug_pending ?? 0,
+      suggestionPending: data.suggestion_pending ?? 0,
+      topicPending: data.topic_pending ?? 0,
+      bugreportPending: bugRes.data.pending ?? 0,
+    };
   } catch {}
 }
 
@@ -193,4 +214,10 @@ nav a.router-link-active {
 .user:hover .user-logout { color: var(--danger); }
 
 .nav-count { color: var(--text-muted); font-size: 12px; }
+.nav-pending {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
+}
 </style>

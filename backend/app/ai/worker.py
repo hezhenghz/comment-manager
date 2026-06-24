@@ -96,6 +96,29 @@ async def _run_once_inner() -> None:
 
         await db.commit()
 
+        # AI 影子预判（采纳/不采纳）：对本批已完成分析的评论，挑选有反馈价值的类别
+        # 静默预判。失败不影响主流程；冷启动门槛与样本检索在 predictor 内部处理。
+        await _shadow_predict_batch(batch, db)
+
+
+async def _shadow_predict_batch(batch: list, db: AsyncSession) -> None:
+    """对本批 done 的评论做策划采纳/不采纳影子预判（只新条目）。"""
+    from app.ai.curation_predictor import predict_decision
+
+    # 只对真正完成分析、且属于需策划处理类别（bug/suggestion/complaint）的评论预判
+    _PREDICT_CATEGORIES = {"bug", "suggestion", "complaint"}
+    for c in batch:
+        if c.ai_status != "done":
+            continue
+        if c.category not in _PREDICT_CATEGORIES:
+            continue
+        # source_type 与前端一致：bug/suggestion 单列，其余归 comment
+        source_type = c.category if c.category in ("bug", "suggestion") else "comment"
+        try:
+            await predict_decision(source_type, c.id, c.content, c.game_id, db)
+        except Exception as e:
+            logger.warning(f"[ai_worker] 影子预判失败 comment={c.id}: {e}")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 取批：partial index 上 ORDER BY next_ai_attempt_at NULLS FIRST, fetched_at

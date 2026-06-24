@@ -44,9 +44,14 @@ class GameOut(BaseModel):
     discord_channel_ids: list[str] = []
     discord_channel_names: dict = {}            # {channel_id: 自定义名称}
     qq_group_ids: list[str] = []
+    is_default: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class GameDefaultUpdate(BaseModel):
+    is_default: bool
 
 
 # ── Comment ──
@@ -108,6 +113,11 @@ class DashboardStats(BaseModel):
     today_suggestion_count: int
     topic_count: int = 0
     negative_review_rate: float | None  # None = 无 steam_store 数据
+    # 需策划处理（待处理）计数：该类条目中未被采纳/不采纳的数量
+    comment_pending: int = 0
+    suggestion_pending: int = 0
+    topic_pending: int = 0
+    bug_pending: int = 0
 
 
 class TrendPoint(BaseModel):

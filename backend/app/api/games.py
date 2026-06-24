@@ -1,12 +1,12 @@
 import uuid
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, func, or_, delete
+from sqlalchemy import select, func, or_, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import Game, Comment, User, CrawlJob
 from app.auth import get_current_user
-from app.schemas.schemas import GameCreate, GameUpdate, GameOut
+from app.schemas.schemas import GameCreate, GameUpdate, GameOut, GameDefaultUpdate
 from app.config import get_settings
 
 router = APIRouter(prefix="/api/games", tags=["games"])
@@ -78,7 +78,9 @@ async def steam_lookup(
 
 @router.get("", response_model=list[GameOut])
 async def list_games(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    result = await db.execute(select(Game).order_by(Game.created_at.desc()))
+    result = await db.execute(
+        select(Game).order_by(Game.is_default.desc(), Game.created_at.desc())
+    )
     games = result.scalars().all()
     out = []
     for g in games:
@@ -91,6 +93,7 @@ async def list_games(db: AsyncSession = Depends(get_db), _: User = Depends(get_c
             discord_channel_ids=g.discord_channel_ids or [],
             discord_channel_names=g.discord_channel_names or {},
             qq_group_ids=g.qq_group_ids or [],
+            is_default=g.is_default,
             created_at=g.created_at,
         ))
     return out
@@ -135,6 +138,7 @@ async def create_game(body: GameCreate, db: AsyncSession = Depends(get_db), _: U
         discord_channel_ids=game.discord_channel_ids or [],
         discord_channel_names=game.discord_channel_names or {},
         qq_group_ids=game.qq_group_ids or [],
+        is_default=game.is_default,
         created_at=game.created_at,
     )
 
@@ -170,6 +174,44 @@ async def update_game(game_id: uuid.UUID, body: GameUpdate, db: AsyncSession = D
         discord_channel_ids=game.discord_channel_ids or [],
         discord_channel_names=game.discord_channel_names or {},
         qq_group_ids=game.qq_group_ids or [],
+        is_default=game.is_default,
+        created_at=game.created_at,
+    )
+
+
+@router.put("/{game_id}/default", response_model=GameOut)
+async def set_default_game(
+    game_id: uuid.UUID,
+    body: GameDefaultUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """设置/取消默认游戏。互斥：设为默认时先清空其他游戏的默认标记。
+    允许全部取消（无默认游戏）。"""
+    result = await db.execute(select(Game).where(Game.id == game_id))
+    game = result.scalar_one_or_none()
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    if body.is_default:
+        # 互斥：先把所有游戏清零，再把目标置为默认
+        await db.execute(update(Game).values(is_default=False))
+        game.is_default = True
+    else:
+        game.is_default = False
+
+    await db.flush()
+    await db.refresh(game)
+    cnt_result = await db.execute(select(func.count()).select_from(Comment).where(Comment.game_id == game.id))
+    comment_count = cnt_result.scalar() or 0
+    return GameOut(
+        id=game.id, name=game.name, steam_app_id=game.steam_app_id,
+        icon_url=game.icon_url, comment_count=comment_count,
+        stopwords=game.stopwords or [],
+        discord_channel_ids=game.discord_channel_ids or [],
+        discord_channel_names=game.discord_channel_names or {},
+        qq_group_ids=game.qq_group_ids or [],
+        is_default=game.is_default,
         created_at=game.created_at,
     )
 

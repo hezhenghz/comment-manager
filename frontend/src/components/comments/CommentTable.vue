@@ -229,17 +229,23 @@
                   </div>
                 </template>
 
-                <!-- 采集到需求板 -->
+                <!-- 需策划处理：采纳 / 不采纳 -->
                 <div class="expand-actions">
-                  <span v-if="collectedIds.has(c.id)" class="collected-badge">✅ 已安排需求</span>
-                  <button
-                    v-else
-                    class="btn-collect"
-                    :disabled="collectingId === c.id"
-                    @click.stop="collectRequirement(c)"
-                  >
-                    {{ collectingId === c.id ? '采集中…' : '📌 采集到需求板' }}
-                  </button>
+                  <template v-if="decisions[c.id] === 'adopted'">
+                    <span class="decision-badge adopted">✅ 已采纳（进需求板）</span>
+                    <button class="btn-redo" :disabled="decidingId === c.id" @click.stop="decide(c, 'rejected')">改为不采纳</button>
+                  </template>
+                  <template v-else-if="decisions[c.id] === 'rejected'">
+                    <span class="decision-badge rejected">⛔ 已不采纳</span>
+                    <button class="btn-redo" :disabled="decidingId === c.id" @click.stop="decide(c, 'adopted')">改为采纳</button>
+                  </template>
+                  <template v-else>
+                    <span class="decision-prompt">需策划处理：</span>
+                    <button class="btn-adopt" :disabled="decidingId === c.id" @click.stop="decide(c, 'adopted')">
+                      {{ decidingId === c.id ? '处理中…' : '采纳' }}
+                    </button>
+                    <button class="btn-reject" :disabled="decidingId === c.id" @click.stop="decide(c, 'rejected')">不采纳</button>
+                  </template>
                 </div>
               </div>
             </td>
@@ -281,9 +287,9 @@ const groupNames    = ref<Record<string, string>>({});
 const chatContext   = ref<Record<string, any>>({});
 const loadingChatCtx = ref<Set<string>>(new Set());
 
-// 需求板
-const collectedIds  = ref<Set<string>>(new Set());
-const collectingId  = ref<string | null>(null);
+// 需策划处理：source_id → 'adopted' | 'rejected'
+const decisions  = ref<Record<string, string>>({});
+const decidingId = ref<string | null>(null);
 
 async function loadGroupNames() {
   if (!gameStore.selectedGameId) return;
@@ -293,25 +299,26 @@ async function loadGroupNames() {
   } catch {}
 }
 
-async function loadCollectedIds() {
+async function loadDecisions() {
   if (!gameStore.selectedGameId) return;
   try {
-    const { data } = await api.get(`/requirements/collected-ids?game_id=${gameStore.selectedGameId}`);
-    collectedIds.value = new Set(data.source_ids as string[]);
+    const { data } = await api.get(`/curation/decisions?game_id=${gameStore.selectedGameId}`);
+    decisions.value = data as Record<string, string>;
   } catch {}
 }
 
-async function collectRequirement(c: any) {
-  if (collectingId.value || collectedIds.value.has(c.id)) return;
-  collectingId.value = c.id;
+async function decide(c: any, decision: 'adopted' | 'rejected') {
+  if (decidingId.value) return;
+  decidingId.value = c.id;
   try {
     const sourceType = props.fixedCategory === 'bug' ? 'bug'
       : props.fixedCategory === 'suggestion' ? 'suggestion'
       : 'comment';
-    await api.post('/requirements', {
+    await api.post('/curation/decide', {
       game_id: gameStore.selectedGameId,
       source_type: sourceType,
       source_id: c.id,
+      decision,
       source_snapshot: {
         content:      c.content,
         author_name:  c.author_name,
@@ -323,14 +330,11 @@ async function collectRequirement(c: any) {
         source_url:   c.source_url,
       },
     });
-    collectedIds.value = new Set([...collectedIds.value, c.id]);
-  } catch (e: any) {
-    if (e?.response?.status === 409) {
-      // 已采集过，标记为已采集
-      collectedIds.value = new Set([...collectedIds.value, c.id]);
-    }
+    decisions.value = { ...decisions.value, [c.id]: decision };
+  } catch (e) {
+    console.error('[curation] decide error', e);
   } finally {
-    collectingId.value = null;
+    decidingId.value = null;
   }
 }
 
@@ -433,7 +437,7 @@ function categoryLabel(c: string | null) { return CATEGORY_MAP[c ?? ''] ?? (c ||
 function langLabel(l: string | null) { return LANG_MAP[l ?? ''] ?? (l || '—'); }
 
 // ─── Load ─────────────────────────────────────────────────────────────────────
-onMounted(() => { load(); loadGroupNames(); loadCollectedIds(); });
+onMounted(() => { load(); loadGroupNames(); loadDecisions(); });
 
 watch(() => props.fixedCategory, (val) => {
   category.value = val ?? '';
@@ -446,7 +450,7 @@ watch(() => gameStore.selectedGameId, () => {
   chatContext.value = {};
   loadWithCurrentFilters();
   loadGroupNames();
-  loadCollectedIds();
+  loadDecisions();
 });
 
 let searchTimer: ReturnType<typeof setTimeout>;
@@ -741,22 +745,32 @@ a { font-size: 12px; color: var(--accent); }
   margin-top: 2px;
 }
 
-.btn-collect {
+/* ── 需策划处理 ── */
+.decision-prompt { font-size: 12px; color: var(--text-muted); margin-right: 4px; }
+.btn-adopt, .btn-reject, .btn-redo {
   padding: 5px 14px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition: all 0.15s;
 }
-.btn-collect:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.btn-collect:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-adopt {
+  background: var(--accent); color: #fff; border: none; margin-right: 6px;
+}
+.btn-adopt:hover:not(:disabled) { opacity: 0.85; }
+.btn-reject {
+  background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary);
+}
+.btn-reject:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+.btn-adopt:disabled, .btn-reject:disabled, .btn-redo:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.collected-badge {
-  font-size: 12px;
-  color: var(--success, #22c55e);
-  font-weight: 500;
+.btn-redo {
+  background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+  margin-left: 10px; padding: 3px 10px;
 }
+.btn-redo:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+
+.decision-badge { font-size: 12px; font-weight: 500; }
+.decision-badge.adopted  { color: var(--success, #22c55e); }
+.decision-badge.rejected { color: var(--text-muted); }
 </style>

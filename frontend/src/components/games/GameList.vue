@@ -22,6 +22,15 @@
           <div class="game-meta">App ID: {{ g.steam_app_id || '—' }} · {{ g.comment_count }} 条评论</div>
         </div>
         <div class="game-actions">
+          <label class="default-toggle" :title="g.is_default ? '当前默认游戏' : '设为默认游戏'">
+            <input
+              type="checkbox"
+              :checked="g.is_default"
+              @change="toggleDefault(g, ($event.target as HTMLInputElement).checked)"
+            />
+            <span class="default-slider"></span>
+            <span class="default-label">设为默认</span>
+          </label>
           <button class="btn-del" @click="askDelete(g)">删除</button>
         </div>
       </div>
@@ -32,6 +41,7 @@
         <!-- 爬虫状态 -->
         <div class="detail-section">
           <div class="detail-title">爬取状态</div>
+          <div class="crawl-hint">爬取 Steam，要开 SakuraCat 代理</div>
           <div v-if="!crawlJobs[g.id]" class="loading-text">加载中…</div>
           <div v-else class="platform-jobs">
             <div v-for="item in crawlJobs[g.id]" :key="item.platform" class="platform-job">
@@ -139,6 +149,53 @@
               </div>
 
             </div>
+
+            <!-- 额外数据源：更新公告（所有游戏）/ BUG上报（仅默认游戏） -->
+            <div v-for="src in extraSources(g)" :key="src.key" class="platform-job">
+              <span class="platform-name">{{ src.label }}</span>
+              <span class="job-total">共 {{ getExtraInfo(g.id, src.key).total }} 条</span>
+
+              <div class="job-pipeline">
+                <template v-if="isExtraBusy(g.id, src.key)">
+                  <span class="pipe-dot running"></span>
+                  <span class="pipe-label">同步中…</span>
+                  <div class="pipe-bar"><div class="pipe-bar-fill indeterminate"/></div>
+                </template>
+                <template v-else-if="getExtraError(g.id, src.key)">
+                  <span class="pipe-dot failed"></span>
+                  <span class="pipe-label err">同步失败：{{ getExtraError(g.id, src.key) }}</span>
+                </template>
+                <template v-else-if="getExtraInfo(g.id, src.key).last_sync_at">
+                  <span class="pipe-dot done"></span>
+                  <span class="pipe-label">同步完成</span>
+                  <span class="pipe-time muted">{{ formatTime(getExtraInfo(g.id, src.key).last_sync_at ?? '') }}</span>
+                </template>
+                <template v-else>
+                  <span class="pipe-dot none"></span>
+                  <span class="pipe-label muted">从未同步</span>
+                </template>
+              </div>
+
+              <div class="job-btns">
+                <button
+                  class="btn-clear"
+                  :disabled="getExtraInfo(g.id, src.key).total === 0 || isExtraBusy(g.id, src.key)"
+                  @click="askClearExtra(g, src.key, src.label, getExtraInfo(g.id, src.key).total)"
+                >清空</button>
+                <button
+                  class="btn-trial"
+                  :disabled="isExtraBusy(g.id, src.key)"
+                  title="只同步最近 5 条，快速验证机制是否正常"
+                  @click="doExtraSync(g, src.key, true)"
+                >试爬</button>
+                <button
+                  class="btn-crawl"
+                  :disabled="isExtraBusy(g.id, src.key)"
+                  @click="doExtraSync(g, src.key, false)"
+                >{{ isExtraBusy(g.id, src.key) ? '同步中…' : '立即同步' }}</button>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -208,6 +265,28 @@
           <div v-else class="discord-hint">尚未配置 QQ 群号</div>
         </div>
 
+        <!-- AI 影子预判准确率 -->
+        <div class="detail-section">
+          <div class="detail-title">AI 预判准确率（影子模式）</div>
+          <div v-if="!curationAcc[g.id]" class="loading-text">加载中…</div>
+          <div v-else-if="curationAcc[g.id].predicting" class="acc-line">
+            <span class="acc-rate" :class="accClass(curationAcc[g.id].rate)">
+              {{ curationAcc[g.id].rate != null ? curationAcc[g.id].rate + '%' : '—' }}
+            </span>
+            <span class="acc-detail">
+              近 {{ curationAcc[g.id].total }} 条预判中一致
+              {{ curationAcc[g.id].hit }}/{{ curationAcc[g.id].total }}
+            </span>
+          </div>
+          <div v-else class="acc-line">
+            <span class="acc-collecting">样本积累中</span>
+            <span class="acc-detail">
+              已处理 {{ curationAcc[g.id].processed_count }}/{{ curationAcc[g.id].cold_start_threshold }}，
+              达标后 AI 开始影子预判
+            </span>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -237,8 +316,9 @@
           <div class="confirm-title">确认清空</div>
           <p class="confirm-body">
             即将清空游戏 <strong>{{ clearTarget.gameName }}</strong> 的
-            <strong>{{ PLATFORM_LABEL[clearTarget.platform] ?? clearTarget.platform }}</strong> 全部数据
+            <strong>{{ clearTarget.extraLabel ?? PLATFORM_LABEL[clearTarget.platform] ?? clearTarget.platform }}</strong> 全部数据
             （共 <strong>{{ clearTarget.count }}</strong> 条）。
+            <template v-if="clearTarget.extraKey === 'bugreport'"><br />⚠️ BUG上报为全局数据，清空将影响所有游戏。</template>
             <br />此操作不可撤销。
           </p>
           <div v-if="clearError" class="confirm-error">{{ clearError }}</div>
@@ -258,6 +338,9 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import api from '../../api';
 import GameForm from './GameForm.vue';
+import { useGameStore } from '../../stores/game';
+
+const gameStore = useGameStore();
 
 const PLATFORM_LABEL: Record<string, string> = {
   steam_store: 'Steam评价', steam_hub: 'Steam论坛',
@@ -273,6 +356,7 @@ interface GameRow {
   discord_channel_ids: string[];
   discord_channel_names: Record<string, string>;
   qq_group_ids: string[];
+  is_default: boolean;
   created_at: string;
 }
 
@@ -324,7 +408,7 @@ const qqInput = ref<Record<string, string>>({});
 const qqSaveStatus = ref<Record<string, string | null>>({});
 const qqDupWarning = ref<Record<string, boolean>>({});
 const deleteTarget = ref<GameRow | null>(null);
-const clearTarget = ref<{ gameId: string; gameName: string; platform: string; count: number } | null>(null);
+const clearTarget = ref<{ gameId: string; gameName: string; platform: string; count: number; extraKey?: ExtraKey; extraLabel?: string } | null>(null);
 const clearing = ref(false);
 const clearError = ref('');
 
@@ -338,6 +422,90 @@ const crawlDurationSec = ref<Record<string, number>>({});
 let pollTimer: number | null = null;
 let tickTimer: number | null = null;
 const now = ref(Date.now());
+
+// ── 额外数据源（更新公告 / BUG上报）─────────────────────────────────────────
+// 这两类不走 CrawlJob，而是各自模块的 /sync + /sync/status + /clear 接口。
+type ExtraKey = 'announcement' | 'bugreport';
+interface ExtraInfo { total: number; last_sync_at: string | null; is_syncing: boolean }
+// gameId_key → 信息
+const extraInfo = ref<Record<string, ExtraInfo>>({});
+const extraError = ref<Record<string, string>>({});
+const extraBusy = ref<Set<string>>(new Set());
+
+const EXTRA_API: Record<ExtraKey, { base: string; perGame: boolean }> = {
+  announcement: { base: '/announcements', perGame: true },   // 按游戏
+  bugreport:    { base: '/bugreports',    perGame: false },  // 全局（背包闯江湖专属）
+};
+
+// 该游戏应展示哪些额外数据源：公告所有游戏都有；BUG上报仅默认游戏
+function extraSources(g: GameRow): { key: ExtraKey; label: string }[] {
+  const list: { key: ExtraKey; label: string }[] = [
+    { key: 'announcement', label: '更新公告' },
+  ];
+  if (g.is_default) list.push({ key: 'bugreport', label: 'BUG上报' });
+  return list;
+}
+
+function getExtraInfo(gameId: string, key: ExtraKey): ExtraInfo {
+  return extraInfo.value[`${gameId}_${key}`] ?? { total: 0, last_sync_at: null, is_syncing: false };
+}
+function isExtraBusy(gameId: string, key: ExtraKey): boolean {
+  const k = `${gameId}_${key}`;
+  return extraBusy.value.has(k) || (extraInfo.value[k]?.is_syncing ?? false);
+}
+function getExtraError(gameId: string, key: ExtraKey): string | null {
+  return extraError.value[`${gameId}_${key}`] ?? null;
+}
+
+async function loadExtraInfo(gameId: string, key: ExtraKey) {
+  const cfg = EXTRA_API[key];
+  const params = cfg.perGame ? { game_id: gameId } : {};
+  try {
+    const [statsRes, statusRes] = await Promise.all([
+      api.get(`${cfg.base}/stats`, { params }),
+      api.get(`${cfg.base}/sync/status`),
+    ]);
+    extraInfo.value = {
+      ...extraInfo.value,
+      [`${gameId}_${key}`]: {
+        total:        statsRes.data.total ?? 0,
+        last_sync_at: statusRes.data.last_sync_at ?? null,
+        is_syncing:   statusRes.data.is_syncing ?? false,
+      },
+    };
+  } catch {}
+}
+
+async function doExtraSync(g: GameRow, key: ExtraKey, trial: boolean) {
+  const k = `${g.id}_${key}`;
+  if (isExtraBusy(g.id, key)) return;
+  delete extraError.value[k];
+  extraBusy.value = new Set(extraBusy.value).add(k);
+  const cfg = EXTRA_API[key];
+  const params: Record<string, any> = {};
+  if (cfg.perGame) params.game_id = g.id;
+  if (trial) params.limit = 5;
+  try {
+    const { data } = await api.post(`${cfg.base}/sync`, null, { params });
+    if (data.status === 'error') throw new Error(data.message);
+    // 轮询同步状态直到完成
+    let tries = 0;
+    const poll = setInterval(async () => {
+      tries++;
+      await loadExtraInfo(g.id, key);
+      if (!getExtraInfo(g.id, key).is_syncing || tries > 150) {
+        clearInterval(poll);
+        const next = new Set(extraBusy.value); next.delete(k);
+        extraBusy.value = next;
+        await loadExtraInfo(g.id, key);
+      }
+    }, 2000);
+  } catch (e: any) {
+    const next = new Set(extraBusy.value); next.delete(k);
+    extraBusy.value = next;
+    extraError.value = { ...extraError.value, [k]: e?.response?.data?.detail ?? e?.message ?? '同步失败' };
+  }
+}
 
 const ESTIMATED_SECONDS: Record<string, number> = {
   steam_store: 30,
@@ -509,9 +677,42 @@ async function load() {
   }
 }
 
+async function toggleDefault(g: GameRow, value: boolean) {
+  try {
+    await api.put(`/games/${g.id}/default`, { is_default: value });
+    await load();                 // 重新拉取（后端已置顶排序）
+    await gameStore.loadGames();  // 同步左上角下拉
+  } catch (e) {
+    console.error('设置默认游戏失败', e);
+    await load();                 // 失败回滚 UI 到服务端真实状态
+  }
+}
+
+// ── AI 影子预判准确率 ────────────────────────────────────────────────────
+const curationAcc = ref<Record<string, any>>({});
+
+async function loadCurationAccuracy(gameId: string) {
+  try {
+    const { data } = await api.get('/curation/accuracy', { params: { game_id: gameId } });
+    curationAcc.value = { ...curationAcc.value, [gameId]: data };
+  } catch {}
+}
+
+function accClass(rate: number | null): string {
+  if (rate == null) return '';
+  if (rate >= 90) return 'acc-good';
+  if (rate >= 75) return 'acc-mid';
+  return 'acc-low';
+}
+
 async function loadAllJobs() {
   for (const g of games.value) {
     loadJobs(g.id);
+    loadCurationAccuracy(g.id);
+    // 同步额外数据源信息（不阻塞）；同步进行中的不打断（由其轮询负责）
+    for (const src of extraSources(g)) {
+      if (!isExtraBusy(g.id, src.key)) loadExtraInfo(g.id, src.key);
+    }
   }
 }
 
@@ -535,15 +736,30 @@ function askClear(g: GameRow, platform: string, count: number) {
   clearTarget.value = { gameId: g.id, gameName: g.name, platform, count };
 }
 
+// 清空额外数据源（公告 / BUG上报）
+function askClearExtra(g: GameRow, key: ExtraKey, label: string, count: number) {
+  clearError.value = '';
+  clearTarget.value = { gameId: g.id, gameName: g.name, platform: key, count, extraKey: key, extraLabel: label };
+}
+
 async function confirmClear() {
   if (!clearTarget.value) return;
   clearing.value = true;
   clearError.value = '';
+  const t = clearTarget.value;
   try {
-    await api.post('/comments/clear', null, { params: { game_id: clearTarget.value.gameId, platform: clearTarget.value.platform } });
-    clearTarget.value = null;
-    await load();
-    await loadAllJobs();
+    if (t.extraKey) {
+      const cfg = EXTRA_API[t.extraKey];
+      const params = cfg.perGame ? { game_id: t.gameId } : {};
+      await api.post(`${cfg.base}/clear`, null, { params });
+      clearTarget.value = null;
+      await loadExtraInfo(t.gameId, t.extraKey);
+    } else {
+      await api.post('/comments/clear', null, { params: { game_id: t.gameId, platform: t.platform } });
+      clearTarget.value = null;
+      await load();
+      await loadAllJobs();
+    }
   } catch (e: any) {
     clearError.value = e?.response?.data?.detail ?? e?.message ?? '清空失败，请重试';
   } finally {
@@ -754,6 +970,39 @@ h2 { font-size: 22px; margin-bottom: 12px; }
 .game-actions { display: flex; align-items: center; gap: 10px; }
 .btn-del { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 13px; }
 
+/* 设为默认 滑块开关 */
+.default-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+.default-toggle input { display: none; }
+.default-slider {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  background: var(--border);
+  border-radius: 9px;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.default-slider::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.15s;
+}
+.default-toggle input:checked + .default-slider { background: var(--accent); }
+.default-toggle input:checked + .default-slider::before { transform: translateX(16px); }
+.default-label { font-size: 13px; color: var(--text-secondary); }
+
 /* ── Detail panel ── */
 .game-detail {
   border-top: 1px solid var(--border);
@@ -911,6 +1160,16 @@ h2 { font-size: 22px; margin-bottom: 12px; }
 }
 .btn-crawl:disabled { opacity: 0.5; cursor: not-allowed; }
 .loading-text { font-size: 13px; color: var(--text-muted); }
+.crawl-hint { font-size: 11px; color: var(--text-muted); margin: -6px 0 10px; }
+
+/* ── AI 预判准确率 ── */
+.acc-line { display: flex; align-items: baseline; gap: 10px; }
+.acc-rate { font-size: 22px; font-weight: 700; }
+.acc-rate.acc-good { color: var(--success, #22c55e); }
+.acc-rate.acc-mid  { color: var(--warning, #f59e0b); }
+.acc-rate.acc-low  { color: var(--danger, #ef4444); }
+.acc-collecting { font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+.acc-detail { font-size: 12px; color: var(--text-muted); }
 
 /* ── Discord channels / QQ groups ── */
 .discord-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }

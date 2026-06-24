@@ -37,7 +37,7 @@ async def get_qq_group_names(
         headers["Authorization"] = f"Bearer {settings.qq_access_token}"
 
     async with httpx.AsyncClient(
-        base_url=settings.qq_napcat_url.rstrip("/"), headers=headers, timeout=10
+        base_url=settings.qq_napcat_url.rstrip("/"), headers=headers, timeout=10, trust_env=False
     ) as client:
         for gid in game.qq_group_ids:
             try:

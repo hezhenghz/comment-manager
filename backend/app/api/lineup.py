@@ -9,6 +9,7 @@
 import asyncio
 import uuid
 from collections import Counter
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -52,6 +53,18 @@ def _cache_put(key: tuple, fp: tuple, result) -> None:
     if _agg_cache and next(iter(_agg_cache.values()))[0] != fp:
         _agg_cache.clear()
     _agg_cache[key] = (fp, result)
+
+
+def _since_cond(since_days: int | None):
+    """按 first_seen_at 过滤的时间条件；since_days 为空或<=0 时返回 None（不过滤）。
+
+    口径：first_seen_at >= now - since_days 天，即「近 N 天内首次出现的阵容」。
+    用 first_seen_at 而非 last_seen_at —— 后者会被重复抓取持续刷新，无法反映新旧。
+    """
+    if not since_days or since_days <= 0:
+        return None
+    cutoff = datetime.utcnow() - timedelta(days=since_days)
+    return LineupSnapshot.first_seen_at >= cutoff
 
 
 @router.post("/fetch")
@@ -181,6 +194,7 @@ async def usage(
     rankLevel: int | None = None,
     top: int = 50,
     careerOnly: bool = False,
+    sinceDays: int | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -198,7 +212,7 @@ async def usage(
     }
     """
     fp = await _data_fingerprint(db)
-    ckey = ("usage", menPai, rankLevel, top, careerOnly)
+    ckey = ("usage", menPai, rankLevel, top, careerOnly, sinceDays)
     cached = _cache_get(ckey, fp)
     if cached is not None:
         return cached
@@ -208,6 +222,9 @@ async def usage(
         conds.append(LineupSnapshot.men_pai == menPai)
     if rankLevel is not None:
         conds.append(LineupSnapshot.rank_level == rankLevel)
+    since = _since_cond(sinceDays)
+    if since is not None:
+        conds.append(since)
 
     q = select(LineupSnapshot.item_counts, LineupSnapshot.round_count)
     if conds:
@@ -307,6 +324,7 @@ async def usage_by_type(
     menPai: int | None = None,
     rankLevel: int | None = None,
     topN: int = 20,
+    sinceDays: int | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -319,7 +337,7 @@ async def usage_by_type(
     其中每项 item = {itemId, name, count, pct, isCareer}。
     """
     fp = await _data_fingerprint(db)
-    ckey = ("usage-by-type", menPai, rankLevel, topN)
+    ckey = ("usage-by-type", menPai, rankLevel, topN, sinceDays)
     cached = _cache_get(ckey, fp)
     if cached is not None:
         return cached
@@ -329,6 +347,9 @@ async def usage_by_type(
         conds.append(LineupSnapshot.men_pai == menPai)
     if rankLevel is not None:
         conds.append(LineupSnapshot.rank_level == rankLevel)
+    since = _since_cond(sinceDays)
+    if since is not None:
+        conds.append(since)
 
     q = select(LineupSnapshot.item_counts, LineupSnapshot.round_count)
     if conds:
@@ -409,6 +430,7 @@ def _gini(values: list[int]) -> float:
 async def usage_imbalance(
     menPai: int | None = None,
     rankLevel: int | None = None,
+    sinceDays: int | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -419,7 +441,7 @@ async def usage_imbalance(
     - 仅返回物品数 N>=2 的类型，按基尼降序。统计口径与 usage-by-type 一致（折叠系列）。
     """
     fp = await _data_fingerprint(db)
-    ckey = ("imbalance", menPai, rankLevel)
+    ckey = ("imbalance", menPai, rankLevel, sinceDays)
     cached = _cache_get(ckey, fp)
     if cached is not None:
         return cached
@@ -429,6 +451,9 @@ async def usage_imbalance(
         conds.append(LineupSnapshot.men_pai == menPai)
     if rankLevel is not None:
         conds.append(LineupSnapshot.rank_level == rankLevel)
+    since = _since_cond(sinceDays)
+    if since is not None:
+        conds.append(since)
 
     q = select(LineupSnapshot.item_counts)
     if conds:
@@ -504,6 +529,7 @@ async def usage_imbalance(
 @router.get("/career-top-imbalance")
 async def career_top_imbalance(
     rankLevel: int | None = None,
+    sinceDays: int | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -513,16 +539,19 @@ async def career_top_imbalance(
     固定遍历全部门派（不接受 menPai 筛选），段位跟随 rankLevel。按基尼降序（最失衡置顶）。
     """
     fp = await _data_fingerprint(db)
-    ckey = ("career-top", rankLevel)
+    ckey = ("career-top", rankLevel, sinceDays)
     cached = _cache_get(ckey, fp)
     if cached is not None:
         return cached
 
+    since = _since_cond(sinceDays)
     out = []
     for mp in MENPAI_LIST:
         conds = [LineupSnapshot.men_pai == mp]
         if rankLevel is not None:
             conds.append(LineupSnapshot.rank_level == rankLevel)
+        if since is not None:
+            conds.append(since)
         rows = (await db.execute(select(LineupSnapshot.item_counts).where(*conds))).all()
 
         counter: Counter = Counter()

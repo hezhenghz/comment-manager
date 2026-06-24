@@ -75,7 +75,7 @@
             <th style="width:90px">提交人</th>
             <th style="width:90px">指派人</th>
             <th style="width:120px">提交时间</th>
-            <th style="width:96px">操作</th>
+            <th style="width:150px">需策划处理</th>
           </tr>
         </thead>
         <tbody>
@@ -110,13 +110,25 @@
               <td class="muted">{{ bug.assignee || '—' }}</td>
               <td class="muted">{{ formatDate(bug.submitted_at) }}</td>
               <td @click.stop>
-                <span v-if="collectedIds.has(bug.id)" class="collected-badge">✅ 已安排</span>
-                <button v-else class="btn-collect"
-                        :disabled="collectingId === bug.id || !gameStore.selectedGameId"
-                        :title="!gameStore.selectedGameId ? '请先在侧边栏选择游戏' : ''"
-                        @click.stop="collectBug(bug)">
-                  {{ collectingId === bug.id ? '采集中…' : '📌 采集' }}
-                </button>
+                <template v-if="decisions[bug.id] === 'adopted'">
+                  <span class="decision-badge adopted">✅ 已采纳</span>
+                  <button class="btn-redo" :disabled="decidingId === bug.id" @click.stop="decide(bug, 'rejected')">改判</button>
+                </template>
+                <template v-else-if="decisions[bug.id] === 'rejected'">
+                  <span class="decision-badge rejected">⛔ 已不采纳</span>
+                  <button class="btn-redo" :disabled="decidingId === bug.id" @click.stop="decide(bug, 'adopted')">改判</button>
+                </template>
+                <template v-else>
+                  <button class="btn-adopt"
+                          :disabled="decidingId === bug.id || !gameStore.selectedGameId"
+                          :title="!gameStore.selectedGameId ? '请先在侧边栏选择游戏' : ''"
+                          @click.stop="decide(bug, 'adopted')">
+                    {{ decidingId === bug.id ? '…' : '采纳' }}
+                  </button>
+                  <button class="btn-reject"
+                          :disabled="decidingId === bug.id || !gameStore.selectedGameId"
+                          @click.stop="decide(bug, 'rejected')">不采纳</button>
+                </template>
               </td>
             </tr>
             <!-- 展开行 -->
@@ -218,28 +230,29 @@ const filters = reactive({
 const previewUrl   = ref<string | null>(null);
 const previewError = ref(false);
 
-// 采集到需求板
-const collectedIds = ref<Set<string>>(new Set());
-const collectingId = ref<string | null>(null);
+// 需策划处理：source_id → 'adopted' | 'rejected'
+const decisions  = ref<Record<string, string>>({});
+const decidingId = ref<string | null>(null);
 
-async function loadCollectedIds() {
+async function loadDecisions() {
   const gid = gameStore.selectedGameId;
-  if (!gid) { collectedIds.value = new Set(); return; }
+  if (!gid) { decisions.value = {}; return; }
   try {
-    const { data } = await api.get(`/requirements/collected-ids?game_id=${gid}`);
-    collectedIds.value = new Set(data.source_ids as string[]);
+    const { data } = await api.get(`/curation/decisions?game_id=${gid}&source_type=bugreport`);
+    decisions.value = data as Record<string, string>;
   } catch {}
 }
 
-async function collectBug(bug: any) {
+async function decide(bug: any, decision: 'adopted' | 'rejected') {
   const gid = gameStore.selectedGameId;
-  if (!gid || collectingId.value || collectedIds.value.has(bug.id)) return;
-  collectingId.value = bug.id;
+  if (!gid || decidingId.value) return;
+  decidingId.value = bug.id;
   try {
-    await api.post('/requirements', {
+    await api.post('/curation/decide', {
       game_id: gid,
       source_type: 'bugreport',
       source_id: bug.id,
+      decision,
       source_snapshot: {
         title:          bug.title,
         description:    bug.description,
@@ -251,13 +264,11 @@ async function collectBug(bug: any) {
         source_url:     bug.source_url,
       },
     });
-    collectedIds.value = new Set([...collectedIds.value, bug.id]);
-  } catch (e: any) {
-    if (e?.response?.status === 409) {
-      collectedIds.value = new Set([...collectedIds.value, bug.id]);
-    }
+    decisions.value = { ...decisions.value, [bug.id]: decision };
+  } catch (e) {
+    console.error('[curation] decide error', e);
   } finally {
-    collectingId.value = null;
+    decidingId.value = null;
   }
 }
 
@@ -275,10 +286,10 @@ function onKeydown(e: KeyboardEvent) {
 // ── 生命周期 ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown);
-  await Promise.all([loadList(), loadStats(), loadSyncStatus(), loadCollectedIds()]);
+  await Promise.all([loadList(), loadStats(), loadSyncStatus(), loadDecisions()]);
 });
 
-watch(() => gameStore.selectedGameId, () => { loadCollectedIds(); });
+watch(() => gameStore.selectedGameId, () => { loadDecisions(); });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown);
@@ -681,24 +692,25 @@ th {
 .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── 采集到需求板 ── */
-.btn-collect {
+/* ── 需策划处理 ── */
+.btn-adopt, .btn-reject, .btn-redo {
   padding: 4px 10px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
   border-radius: 4px;
-  color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s;
 }
-.btn-collect:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.btn-collect:disabled { opacity: 0.5; cursor: not-allowed; }
-.collected-badge {
-  font-size: 12px;
-  color: var(--positive, #22c55e);
-  white-space: nowrap;
-}
+.btn-adopt { background: var(--accent); color: #fff; border: none; margin-right: 5px; }
+.btn-adopt:hover:not(:disabled) { opacity: 0.85; }
+.btn-reject { background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-secondary); }
+.btn-reject:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+.btn-redo { background: transparent; border: 1px solid var(--border); color: var(--text-muted); margin-left: 8px; padding: 2px 8px; }
+.btn-redo:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-adopt:disabled, .btn-reject:disabled, .btn-redo:disabled { opacity: 0.5; cursor: not-allowed; }
+.decision-badge { font-size: 12px; white-space: nowrap; font-weight: 500; }
+.decision-badge.adopted  { color: var(--positive, #22c55e); }
+.decision-badge.rejected { color: var(--text-muted); }
 
 /* ── 截图预览弹窗 ── */
 .img-modal {

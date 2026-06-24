@@ -20,6 +20,7 @@ import ItemUsageBar from './ItemUsageBar.vue';
 const props = defineProps<{
   menPai: number | null;
   rankLevel: number | null;
+  sinceDays: number | null;
 }>();
 
 const types = ref<any[]>([]);
@@ -28,6 +29,7 @@ async function load() {
   const params: any = { topN: 20 };
   if (props.menPai != null) params.menPai = props.menPai;
   if (props.rankLevel != null) params.rankLevel = props.rankLevel;
+  if (props.sinceDays != null) params.sinceDays = props.sinceDays;
   try {
     const { data } = await api.get('/lineup/usage-by-type', { params });
     types.value = data.types ?? [];
@@ -37,7 +39,7 @@ async function load() {
 }
 
 onMounted(load);
-watch(() => [props.menPai, props.rankLevel], load);
+watch(() => [props.menPai, props.rankLevel, props.sinceDays], load);
 </script>
 
 <style scoped>

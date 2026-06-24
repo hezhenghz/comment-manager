@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Text, Float, Boolean, Integer, DateTime, ForeignKey, Text as SAText
+from sqlalchemy import String, Text, Float, Boolean, Integer, DateTime, ForeignKey, Text as SAText, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, ARRAY, DATERANGE, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
@@ -18,6 +18,7 @@ class Game(Base):
     discord_channel_ids:   Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     discord_channel_names: Mapped[dict]      = mapped_column(JSONB, default=dict)  # {channel_id: 自定义名称}
     qq_group_ids: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     comments: Mapped[list["Comment"]] = relationship(back_populates="game", cascade="all, delete-orphan")
@@ -134,9 +135,43 @@ class RequirementCard(Base):
     source_id:        Mapped[uuid.UUID]  = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     source_snapshot:  Mapped[dict]       = mapped_column(JSONB, default=dict)
     requirement_text: Mapped[str]        = mapped_column(Text, default="")
-    status:           Mapped[str]        = mapped_column(String(20), default="todo")   # todo | in_progress | done
+    status:           Mapped[str]        = mapped_column(String(20), default="todo")   # todo | in_progress | verifying | done
+    ticket_type:      Mapped[str]        = mapped_column(String(20), default="requirement")  # bug | requirement | optimization
+    priority:         Mapped[str]        = mapped_column(String(10), default="medium")        # high | medium | low
     created_at:       Mapped[datetime]   = mapped_column(DateTime, default=datetime.utcnow)
     updated_at:       Mapped[datetime]   = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CurationDecision(Base):
+    """策划处理决定 + AI 影子预判（统一指向评论/话题/BUG上报任意条目）。
+
+    采纳/不采纳 决定记录、AI 检索式预判、预判命中标记，集中在这张表，
+    三个模块复用同一套逻辑。embedding 存这里供相似历史样本检索。
+    """
+    __tablename__ = "curation_decisions"
+    # source_id 全局唯一：评论/话题/BUG上报 UUID 来自不同表，不会碰撞。
+    # 同一条 bug 评论在 /comments 与 /bugs 两页都能处理，按 source_id 去重避免双记录。
+    __table_args__ = (
+        UniqueConstraint("source_id", name="uq_curation_source_id"),
+    )
+
+    id:              Mapped[uuid.UUID]  = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    game_id:         Mapped[uuid.UUID]  = mapped_column(UUID(as_uuid=True), ForeignKey("games.id"), nullable=False, index=True)
+    # 'comment' | 'bug' | 'suggestion' | 'topic' | 'bugreport'
+    source_type:     Mapped[str]        = mapped_column(String(20), nullable=False, index=True)
+    source_id:       Mapped[uuid.UUID]  = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    # 'pending' | 'adopted' | 'rejected'
+    decision:        Mapped[str]        = mapped_column(String(12), nullable=False, default="pending", index=True)
+    decided_by:      Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    decided_at:      Mapped[datetime | None]  = mapped_column(DateTime, nullable=True)
+    # AI 影子预判：'adopted' | 'rejected' | None
+    ai_prediction:   Mapped[str | None]       = mapped_column(String(12), nullable=True)
+    ai_predicted_at: Mapped[datetime | None]  = mapped_column(DateTime, nullable=True)
+    # 预判与策划决定是否一致（策划决定时回填，None=无预判可比）
+    ai_hit:          Mapped[bool | None]      = mapped_column(Boolean, nullable=True, index=True)
+    embedding:       Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
+    source_snapshot: Mapped[dict]       = mapped_column(JSONB, default=dict)
+    created_at:      Mapped[datetime]   = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class ChatMessage(Base):
@@ -195,6 +230,27 @@ class BugReport(Base):
     save_url:       Mapped[str | None] = mapped_column(String(1024))   # 存档 PlayerData.bytes
     log_url:        Mapped[str | None] = mapped_column(String(1024))   # 日志 Player.log
     prev_log_url:   Mapped[str | None] = mapped_column(String(1024))   # 前一次日志 Player-prev.log
+
+
+class GameAnnouncement(Base):
+    """游戏更新公告（来自 Steam 社区官方公告 events 接口）。
+    中文优先：接口返回中文则直接用；否则翻译原文并标记 is_translated。
+    body_zh 存的是已由 BBCode 转好的 HTML 片段，前端直接 v-html 渲染。"""
+    __tablename__ = "game_announcements"
+
+    id:            Mapped[uuid.UUID]  = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    game_id:       Mapped[uuid.UUID]  = mapped_column(UUID(as_uuid=True), ForeignKey("games.id"), nullable=False, index=True)
+    external_id:   Mapped[str]        = mapped_column(String(50), nullable=False, index=True)  # Steam 顶层 gid
+    title:         Mapped[str]        = mapped_column(String(500), nullable=False)             # 原始标题
+    title_zh:      Mapped[str]        = mapped_column(String(500), nullable=False, default="") # 中文标题
+    body:          Mapped[str | None] = mapped_column(Text)                                     # 原始 BBCode 正文
+    body_zh:       Mapped[str | None] = mapped_column(Text)                                     # 转好的中文 HTML 正文
+    is_translated: Mapped[bool]       = mapped_column(Boolean, default=False, nullable=False)   # 是否机翻
+    lang:          Mapped[str | None] = mapped_column(String(20))                               # 原文语言
+    published_at:  Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    source_url:    Mapped[str | None] = mapped_column(String(1024))
+    fetched_at:    Mapped[datetime]   = mapped_column(DateTime, default=datetime.utcnow)
+    raw_json:      Mapped[dict | None] = mapped_column(JSONB)
 
 
 # ── 阵容物品使用率分析模块（独立于评论业务，无 game_id 外键）─────────────

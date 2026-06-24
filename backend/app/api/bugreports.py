@@ -128,12 +128,22 @@ async def bug_stats(
         select(func.count()).where(BugReport.submitted_at >= today_start)
     )).scalar_one()
 
+    # 需策划处理（待处理）：source_id 未出现在已处理决定里的 BUG上报数量（全局）
+    from app.models import CurationDecision
+    processed_subq = select(CurationDecision.source_id).where(
+        CurationDecision.decision != "pending"
+    ).scalar_subquery()
+    pending = (await db.execute(
+        select(func.count(BugReport.id)).where(BugReport.id.notin_(processed_subq))
+    )).scalar() or 0
+
     return {
         "total":      total,
         "active":     by_status.get("active", 0),
         "resolved":   by_status.get("resolved", 0),
         "closed":     by_status.get("closed", 0),
         "today_new":  today_new,
+        "pending":    pending,
         "by_status":  by_status,
     }
 
@@ -149,10 +159,11 @@ async def sync_status(
 
 @router.post("/sync")
 async def trigger_sync(
+    limit: Optional[int] = Query(None, ge=1, le=50),
     current_user: User = Depends(get_current_user),
 ):
     """
-    手动触发 BUG 同步。
+    手动触发 BUG 同步。limit 不为空时为试爬：只取最近 limit 条。
     优先级：
       1. 如果配置了 LOCAL_PUSHER_URL，则转发到本地推送服务（异地架构）
       2. 否则使用本机的 ZenTao 凭据直接同步（单机架构）
@@ -194,8 +205,22 @@ async def trigger_sync(
     from app.crawlers.zentao.sync import sync_bug_reports, _is_syncing
     if _is_syncing:
         return {"status": "already_running", "message": "同步正在进行中"}
-    asyncio.create_task(sync_bug_reports())
+    asyncio.create_task(sync_bug_reports(limit=limit))
     return {"status": "started", "message": "同步已开始"}
+
+
+@router.post("/clear")
+async def clear_bug_reports(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """清空全部 BUG 上报数据（全局，仅管理员）。"""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="仅管理员可清空")
+    from sqlalchemy import delete
+    result = await db.execute(delete(BugReport))
+    await db.commit()
+    return {"deleted": result.rowcount}
 
 
 # ─── 外部推送端点（异地爬虫架构） ───────────────────────────────────────────
